@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django_rq',
+    'video_offer_app.apps.VideoOfferAppConfig',
 ]
 
 MIDDLEWARE = [
