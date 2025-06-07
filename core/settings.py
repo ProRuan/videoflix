@@ -95,6 +95,7 @@ DATABASES = {
     }
 }
 
+# add PASSWORD at OPTIONS if required
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
@@ -106,6 +107,7 @@ CACHES = {
     }
 }
 
+# add PASSWORD after HOST if required
 RQ_QUEUES = {
     'default': {
         'HOST': os.environ.get("REDIS_HOST", default="redis"),
