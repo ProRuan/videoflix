@@ -51,3 +51,37 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError("Invalid credentials.")
         data['user'] = user
         return data
+
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Invalid email.")
+        return value
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+    repeated_password = serializers.CharField(write_only=True)
+
+    def validate_password(self, value):
+        if len(value) < 8:
+            raise serializers.ValidationError(
+                "Password must be at least 8 characters.")
+        if value.isdigit() or value.isalpha():
+            raise serializers.ValidationError(
+                "Password must contain both letters and numbers.")
+        return value
+
+    def validate(self, data):
+        if data['password'] != data['repeated_password']:
+            raise serializers.ValidationError("Passwords do not match.")
+
+        if not User.objects.filter(email=data['email']).exists():
+            raise serializers.ValidationError(
+                "User with this email does not exist.")
+
+        return data
