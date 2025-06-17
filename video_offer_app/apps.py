@@ -6,4 +6,4 @@ class VideoOfferAppConfig(AppConfig):
     name = 'video_offer_app'
 
     def ready(self):
-        from video_offer_app import signals
+        from . import signals
