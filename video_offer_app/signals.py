@@ -14,7 +14,7 @@ from .tasks import convert_480p, convert_120p, convert_360p, convert_720p, conve
 @receiver(post_save, sender=Video)
 def video_post_save(sender, instance, created, **kwargs):
     print('Video successfully saved')
-    if created:
+    if created and instance.video_file:
         print('New video created')
         queue = django_rq.get_queue('default', autocommit=True)
         queue.enqueue(convert_480p, instance.video_file.path)
