@@ -54,6 +54,8 @@ INSTALLED_APPS = [
     'video_offer_app.apps.VideoOfferAppConfig',
 ]
 
+AUTH_USER_MODEL = 'auth_app.User'
+
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',

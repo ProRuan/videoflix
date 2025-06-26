@@ -20,13 +20,14 @@ from django.urls import include, path
 from django.conf import settings
 from django.conf.urls.static import static  # <-- import this
 
+
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api-auth/', include('rest_framework.urls')),
     path('django-rq', include('django_rq.urls')),
     path('api/', include('auth_app.api.urls')),
     path('api/videos/', include('video_offer_app.api.urls')),
 ]
-
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL,
