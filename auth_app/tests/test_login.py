@@ -1,49 +1,56 @@
+# Third-party supplier
 import pytest
-from django.contrib.auth.models import User
-from rest_framework import status
+from django.contrib.auth import get_user_model
+from django.urls import reverse
+from rest_framework.test import APIClient
 
-LOGIN_URL = "/api/login/"
-
-
-@pytest.mark.django_db
-def test_successful_login(client):
-    """Ensure a user can log in with valid credentials."""
-    user = User.objects.create_user(
-        username="exampleUsername", email="example@mail.de", password="examplePassword")
-    response = client.post(LOGIN_URL, data={
-        "username": "exampleUsername",
-        "password": "examplePassword"
-    }, content_type="application/json")
-
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert "token" in data
-    assert data["username"] == "exampleUsername"
-    assert data["email"] == "example@mail.de"
-    assert data["user_id"] == user.id
+User = get_user_model()
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("username", ["", "a", "ab", "unknownUser"])
-def test_invalid_or_short_username(client, username):
-    """Ensure login fails for invalid or too short usernames."""
-    User.objects.create_user(username="validUser", password="validPassword")
-    response = client.post(LOGIN_URL, data={
-        "username": username,
-        "password": "validPassword"
-    }, content_type="application/json")
+class TestLoginEndpoint:
+    """
+    Provides some tests for the login endpoint.
+    """
+    endpoint = reverse('login')
 
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    def setup_method(self):
+        """
+        Set up user for login tests.
+        """
+        self.user = User.objects.create_user(
+            email='user@example.com',
+            password='StrongP@ss1'
+        )
 
+    def test_login_success(self):
+        """
+        Ensure valid credentials (status code 200).
+        The success response returns token, email and user_id.
+        """
+        client = APIClient()
+        data = {'email': 'user@example.com', 'password': 'StrongP@ss1'}
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 200
+        content = response.json()
+        assert 'token' in content
+        assert content['email'] == self.user.email
+        assert content['user_id'] == self.user.id
 
-@pytest.mark.django_db
-def test_invalid_password(client):
-    """Ensure login fails for wrong password."""
-    User.objects.create_user(username="exampleUsername",
-                             password="correctPassword")
-    response = client.post(LOGIN_URL, data={
-        "username": "exampleUsername",
-        "password": "wrongPassword"
-    }, content_type="application/json")
+    def test_login_invalid_email(self):
+        """
+        Ensure login with non-existent email returns status code 400.
+        """
+        client = APIClient()
+        data = {'email': 'wrong@example.com', 'password': 'StrongP@ss1'}
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 400
 
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    def test_login_invalid_password(self):
+        """
+        Ensure login with wrong password returns status code 400.
+        """
+        client = APIClient()
+        data = {'email': 'user@example.com', 'password': 'WrongP@ss1'}
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 400

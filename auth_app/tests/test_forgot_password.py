@@ -1,44 +1,57 @@
+# Third-party layers
 import pytest
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.core import mail
-from rest_framework import status
+from django.urls import reverse
+from rest_framework.authtoken.models import Token
+from rest_framework.test import APIClient
 
-FORGOT_URL = '/api/forgot-password/'
+User = get_user_model()
 
-
-@pytest.mark.django_db
-def test_forgot_password_success_sends_email_and_returns_email(client):
-    """Ensure valid email triggers a reset email and returns the email."""
-    email = 'user@example.com'
-    User.objects.create_user(
-        username='testuser', email=email, password='TestPass123')
-    mail.outbox = []
-
-    response = client.post(
-        FORGOT_URL,
-        data={'email': email},
-        content_type='application/json'
-    )
-
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert data.get('email') == email
-
-    # Email was queued
-    assert len(mail.outbox) == 1
-    sent = mail.outbox[0]
-    assert email in sent.to
-    assert 'Reset your Videoflix password' in sent.subject
+bad_request_response = 'Please check your data and try it again.'
 
 
 @pytest.mark.django_db
-def test_forgot_password_invalid_email_returns_400(client):
-    """Ensure non-existent email returns 400 with error."""
-    response = client.post(
-        FORGOT_URL,
-        data={'email': 'noone@nowhere.com'},
-        content_type='application/json'
-    )
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    data = response.json()
-    assert 'email' in data or data.get('non_field_errors')
+class TestForgotPasswordEndpoint:
+    """
+    Provides some tests for the forgot-password endpoint.
+    """
+    endpoint = reverse('forgot-password')
+
+    def setup_method(self):
+        """
+        Set up user for forgot-password tests.
+        """
+        self.user = User.objects.create_user(
+            email='user@example.com',
+            password='StrongP@ss1'
+        )
+
+    def test_forgot_password_success(self):
+        """
+        Ensure valid email succeeds.
+        The success response returns token, email, user_id and sends email.
+        """
+        client = APIClient()
+        data = {'email': 'user@example.com'}
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 200
+        content = response.json()
+        assert 'token' in content
+        assert content['email'] == self.user.email
+        assert content['user_id'] == self.user.id
+        token = Token.objects.get(user=self.user)
+        assert content['token'] == token.key
+        assert len(mail.outbox) == 1
+        assert self.user.email in mail.outbox[0].to
+
+    def test_forgot_password_invalid_email(self):
+        """
+        Ensure non-existent email returns status code 400.
+        The response returns a generic error.
+        """
+        client = APIClient()
+        data = {'email': 'wrong@example.com'}
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 400
+        assert response.json().get('detail') == bad_request_response

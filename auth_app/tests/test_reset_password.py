@@ -1,83 +1,77 @@
+# Third-party suppliers
 import pytest
-from django.contrib.auth.models import User
-from rest_framework import status
+from django.contrib.auth import get_user_model, authenticate
+from django.urls import reverse
+from rest_framework.authtoken.models import Token
+from rest_framework.test import APIClient
 
-RESET_URL = '/api/reset-password/'
+User = get_user_model()
+
+bad_request_response = 'Please check your data and try it again.'
 
 
-@pytest.mark.django_db
-def test_reset_password_success_changes_password_and_returns_token(client):
-    """Ensure valid reset changes password and returns new token and user info."""
-    email = 'reset@example.com'
-    old_pw = 'OldPass123'
-    new_pw = 'NewPass123'
-    user = User.objects.create_user(
-        username='resetuser', email=email, password=old_pw)
-
-    response = client.post(
-        RESET_URL,
-        data={
-            'email': email,
-            'password': new_pw,
-            'repeated_password': new_pw
-        },
-        content_type='application/json'
-    )
-
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert 'token' in data
-    assert data['username'] == user.username
-    assert data['email'] == email
-    assert data['user_id'] == user.id
-
-    user.refresh_from_db()
-    assert user.check_password(new_pw)
+def get_data(self, password, repeated_password):
+    """
+    Get data containing token, password and repeated_password.
+    """
+    return {
+        'token': self.token_obj.key,
+        'password': password,
+        'repeated_password': repeated_password
+    }
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize(
-    "password, repeated, field",
-    [
-        ('short', 'short', 'password'),
-        ('allletters', 'allletters', 'password'),
-        ('12345678', '12345678', 'password'),
-        ('Mismatch1', 'Mismatch2', 'non_field_errors'),
-    ]
-)
-def test_reset_password_invalid_data_returns_400(client, password, repeated, field):
-    """Ensure weak, mismatched, or invalid reset data is rejected."""
-    email = 'exists@example.com'
-    User.objects.create_user(username='existsuser',
-                             email=email, password='Exists123')
+class TestResetPasswordEndpoint:
+    """
+    Provides some tests for the reset-password endpoint.
+    """
+    endpoint = reverse('reset-password')
 
-    response = client.post(
-        RESET_URL,
-        data={
-            'email': email,
-            'password': password,
-            'repeated_password': repeated
-        },
-        content_type='application/json'
-    )
+    def setup_method(self):
+        """
+        Set up user for reset-password tests.
+        """
+        self.user = User.objects.create_user(
+            email='user@example.com',
+            password='StrongP@ss1'
+        )
+        self.token_obj, provided = Token.objects.get_or_create(user=self.user)
 
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    data = response.json()
-    assert field in data
+    def test_reset_password_success(self):
+        """
+        Ensure valid new password updates user's password (status code 200).
+        The success response returns token, email, user_id.
+        """
+        client = APIClient()
+        data = get_data(self, 'NewP@ssw0rd', 'NewP@ssw0rd')
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 200
+        content = response.json()
+        assert content['token'] == self.token_obj.key
+        assert content['email'] == self.user.email
+        assert content['user_id'] == self.user.id
+        user = authenticate(email=self.user.email, password='NewP@ssw0rd')
+        assert user is not None and user.is_active
 
+    def test_reset_password_invalid_password(self):
+        """
+        Ensure weak password returns status code 400.
+        The response returns a generic error.
+        """
+        client = APIClient()
+        data = get_data(self, 'weak', 'weak')
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 400
+        assert response.json().get('detail') == bad_request_response
 
-@pytest.mark.django_db
-def test_reset_password_nonexistent_email_returns_400(client):
-    """Ensure reset with non-existent email returns 400."""
-    response = client.post(
-        RESET_URL,
-        data={
-            'email': 'nonexistent@example.com',
-            'password': 'ValidPass123',
-            'repeated_password': 'ValidPass123'
-        },
-        content_type='application/json'
-    )
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    data = response.json()
-    assert 'non_field_errors' in data or 'email' in data
+    def test_reset_password_mismatch(self):
+        """
+        Ensure mismatched passwords return status code 400.
+        The response returns a generic error.
+        """
+        client = APIClient()
+        data = get_data(self, 'NewP@ssw0rd', 'DifferentP@ss2')
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 400
+        assert response.json().get('detail') == bad_request_response

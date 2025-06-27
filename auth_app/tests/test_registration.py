@@ -1,84 +1,115 @@
+# Third-party suppliers
 import pytest
+from django.contrib.auth import get_user_model
+from django.core import mail
 from django.urls import reverse
-from rest_framework import status
+from rest_framework.test import APIClient
 
-REGISTRATION_URL = '/api/registration/'
+User = get_user_model()
 
+successful_registration_data = {
+    'email': 'user@example.com',
+    'password': 'StrongP@ss1',
+    'repeated_password': 'StrongP@ss1'
+}
 
-@pytest.mark.django_db
-def test_successful_registration(client):
-    """Ensure a user can register successfully."""
-    payload = {
-        "username": "exampleuser",
-        "email": "example@mail.de",
-        "password": "StrongPass123",
-        "repeated_password": "StrongPass123"
-    }
-    response = client.post(REGISTRATION_URL, data=payload,
-                           content_type='application/json')
+invalid_password_data = {
+    'email': 'user2@example.com',
+    'password': 'weak',
+    'repeated_password': 'weak'
+}
 
-    assert response.status_code == status.HTTP_201_CREATED
-    data = response.json()
-    assert "token" in data
-    assert data["username"] == payload["username"]
-    assert data["email"] == payload["email"]
-    assert isinstance(data["user_id"], int)
+password_mismatch_data = {
+    'email': 'user3@example.com',
+    'password': 'StrongP@ss1',
+    'repeated_password': 'DifferentP@ss2'
+}
 
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("username", ["", "a", "ab"])
-def test_invalid_or_short_username(client, username):
-    """Ensure invalid or too short usernames are rejected."""
-    payload = {
-        "username": username,
-        "email": "valid@mail.de",
-        "password": "StrongPass123",
-        "repeated_password": "StrongPass123"
-    }
-    response = client.post(REGISTRATION_URL, data=payload,
-                           content_type='application/json')
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
+bad_request_response = 'Please check your data and try it again.'
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("email", ["not-an-email", "user@.com", "user.com"])
-def test_invalid_email(client, email):
-    """Ensure invalid emails are rejected."""
-    payload = {
-        "username": "validuser",
-        "email": email,
-        "password": "StrongPass123",
-        "repeated_password": "StrongPass123"
-    }
-    response = client.post(REGISTRATION_URL, data=payload,
-                           content_type='application/json')
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
+class TestRegistrationEndpoint:
+    """
+    Provides some tests for the registration endpoint.
+    """
+    endpoint = reverse('registration')
 
+    def test_registration_success(self):
+        """
+        Ensure valid data creates a user (status code 201).
+        The success response returns token, email and user_id.
+        """
+        client = APIClient()
+        data = successful_registration_data
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 201
+        content = response.json()
+        assert 'token' in content
+        assert content['email'] == data['email']
+        assert isinstance(content['user_id'], int)
+        user = User.objects.get(email=data['email'])
+        assert user.is_active is True
 
-@pytest.mark.django_db
-@pytest.mark.parametrize("password", ["123", "pass", "short"])
-def test_invalid_password(client, password):
-    """Ensure too short or weak passwords are rejected."""
-    payload = {
-        "username": "validuser",
-        "email": "valid@mail.de",
-        "password": password,
-        "repeated_password": password
-    }
-    response = client.post(REGISTRATION_URL, data=payload,
-                           content_type='application/json')
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    def test_registration_invalid_email(self):
+        """
+        Ensure invalid email returns status code 400.
+        The response returns a generic error.
+        """
+        client = APIClient()
+        data = successful_registration_data
+        data['email'] = 'invalid-email'
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 400
+        assert response.json().get('detail') == bad_request_response
 
+    def test_registration_invalid_password(self):
+        """
+        Ensure weak password returns status code 400.
+        The response returns a generic error.
+        """
+        client = APIClient()
+        data = invalid_password_data
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 400
+        assert response.json().get('detail') == bad_request_response
 
-@pytest.mark.django_db
-def test_password_mismatch(client):
-    """Ensure mismatched passwords are rejected."""
-    payload = {
-        "username": "validuser",
-        "email": "valid@mail.de",
-        "password": "Password123",
-        "repeated_password": "Password321"
-    }
-    response = client.post(REGISTRATION_URL, data=payload,
-                           content_type='application/json')
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    def test_registration_password_mismatch(self):
+        """
+        Ensure mismatched passwords return status code 400.
+        The response returns a generic error.
+        """
+        client = APIClient()
+        data = password_mismatch_data
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 400
+        assert response.json().get('detail') == bad_request_response
+
+    def test_confirmation_email_sent(self):
+        """
+        Ensure a confirmation email is sent upon successful registration.
+        """
+        client = APIClient()
+        data = successful_registration_data
+        data['email'] = 'user4@example.com'
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 201
+        assert len(mail.outbox) == 1
+        assert data['email'] in mail.outbox[0].to
+
+    def test_registration_duplicate_email(self):
+        """
+        Ensure duplicate email registration returns status code 400.
+        The response returns a generic error.
+        """
+        User.objects.create_user(
+            email='user@example.com', password='StrongP@ss1')
+        client = APIClient()
+        data = {
+            'email': 'user@example.com',
+            'password': 'StrongP@ss1',
+            'repeated_password': 'StrongP@ss1',
+        }
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 400
+        assert response.json().get('detail') == bad_request_response
