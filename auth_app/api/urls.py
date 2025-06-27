@@ -1,5 +1,11 @@
+# Third-party suppliers
 from django.urls import path
-from .views import ForgotPasswordView, LoginView, RegistrationView, ResetPasswordView
+
+# Local imports
+from .views import (
+    ForgotPasswordView, LoginView,
+    RegistrationView, ResetPasswordView
+)
 
 urlpatterns = [
     path('registration/', RegistrationView.as_view(), name='registration'),

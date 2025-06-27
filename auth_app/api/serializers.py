@@ -1,97 +1,138 @@
-# from django.contrib.auth import authenticate
-# from django.contrib.auth.models import User
-# from rest_framework import serializers
-# from rest_framework.authtoken.models import Token
-
-
+# Third-party suppliers
 import re
 from django.contrib.auth import authenticate, get_user_model
-from rest_framework.authtoken.models import Token
 from rest_framework import serializers
+from rest_framework.authtoken.models import Token
 
 User = get_user_model()
 
 
 class RegistrationSerializer(serializers.Serializer):
+    """
+    Represents a registration serializer.
+    Provides methods to validate email and passwords.
+    Creates user based on valid email and password.
+    """
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
     repeated_password = serializers.CharField(write_only=True)
 
     def validate_email(self, value):
+        """
+        Validate email for uniqueness.
+        """
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError(
-                "Please check your data and try it again.")
+                "Please check your data and try it again."
+            )
         return value
 
     def validate(self, data):
+        """
+        Validate passwords for validity and match.
+        """
         if data['password'] != data['repeated_password']:
             raise serializers.ValidationError(
-                'Please check your data and try it again.')
-        # Password complexity: min 8 chars, uppercase, lowercase, digit, special
+                'Please check your data and try it again.'
+            )
         pattern = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$'
         if not re.match(pattern, data['password']):
             raise serializers.ValidationError(
-                'Please check your data and try it again.')
+                'Please check your data and try it again.'
+            )
         return data
 
     def create(self, validated_data):
-        user = User.objects.create_user(
+        """
+        Create user by validated email and password.
+        """
+        return User.objects.create_user(
             email=validated_data['email'],
             password=validated_data['password'],
         )
-        return user
 
 
 class LoginSerializer(serializers.Serializer):
+    """
+    Represents a login serializer.
+    Provides methods to authenticate a user.
+    """
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
 
     def validate(self, data):
-        user = authenticate(email=data['email'], password=data['password'])
+        """
+        Validate user data and user account.
+        """
+        user = authenticate(
+            email=data['email'], password=data['password']
+        )
         if not user or not user.is_active:
             raise serializers.ValidationError(
-                'Please check your data and try it again.')
+                'Please check your data and try it again.'
+            )
         return {'user': user}
 
 
 class ForgotPasswordSerializer(serializers.Serializer):
+    """
+    Represents a forgot-password serializer.
+    Provides methods to validate an email.
+    """
     email = serializers.EmailField()
 
     def validate_email(self, value):
-        try:
-            user = User.objects.get(email=value)
-        except User.DoesNotExist:
+        """
+        Validate email for existence.
+        """
+        if not User.objects.filter(email=value).exists():
             raise serializers.ValidationError(
-                'Please check your data and try it again.')
+                'Please check your data and try it again.'
+            )
         return value
 
 
 class ResetPasswordSerializer(serializers.Serializer):
+    """
+    Represents a reset-password serializer.
+    Provides methods to validate token and passwords.
+    Updates user password by validated data.
+    """
     token = serializers.CharField()
     password = serializers.CharField(write_only=True)
     repeated_password = serializers.CharField(write_only=True)
 
     def validate(self, data):
-        # Check password match
+        """
+        Validate passwords for validity and match.
+        """
         if data['password'] != data['repeated_password']:
             raise serializers.ValidationError(
-                'Please check your data and try it again.')
-        # Complexity check
+                'Please check your data and try it again.'
+            )
         pattern = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$'
         if not re.match(pattern, data['password']):
             raise serializers.ValidationError(
-                'Please check your data and try it again.')
+                'Please check your data and try it again.'
+            )
         return data
 
     def validate_token(self, value):
+        """
+        Validate token for existence.
+        """
         try:
-            token = User.objects.get(auth_token__key=value).auth_token
-        except Exception:
+            Token.objects.get(key=value)
+        except Token.DoesNotExist:
             raise serializers.ValidationError(
-                'Please check your data and try it again.')
+                'Please check your data and try it again.'
+            )
         return value
 
     def save(self):
+        """
+        Update user password.
+        """
         token_key = self.validated_data['token']
         password = self.validated_data['password']
         token = Token.objects.get(key=token_key)
@@ -99,86 +140,3 @@ class ResetPasswordSerializer(serializers.Serializer):
         user.set_password(password)
         user.save()
         return token
-
-
-# class RegistrationSerializer(serializers.ModelSerializer):
-#     repeated_password = serializers.CharField(write_only=True)
-
-#     class Meta:
-#         model = User
-#         fields = ['username', 'email', 'password', 'repeated_password']
-#         extra_kwargs = {
-#             'password': {'write_only': True}
-#         }
-
-#     def validate_username(self, value):
-#         if len(value) < 3:
-#             raise serializers.ValidationError(
-#                 "Username must be at least 3 characters long.")
-#         return value
-
-#     def validate_password(self, value):
-#         if len(value) < 8:
-#             raise serializers.ValidationError(
-#                 "Password must be at least 8 characters long.")
-#         if value.isdigit() or value.isalpha():
-#             raise serializers.ValidationError(
-#                 "Password must contain letters and numbers.")
-#         return value
-
-#     def validate(self, data):
-#         if data['password'] != data['repeated_password']:
-#             raise serializers.ValidationError("Passwords do not match.")
-#         return data
-
-#     def create(self, validated_data):
-#         validated_data.pop('repeated_password')
-#         user = User.objects.create_user(**validated_data)
-#         return user
-
-
-# class LoginSerializer(serializers.Serializer):
-#     username = serializers.CharField()
-#     password = serializers.CharField(write_only=True)
-
-#     def validate(self, data):
-#         user = authenticate(
-#             username=data['username'], password=data['password'])
-#         if not user:
-#             raise serializers.ValidationError("Invalid credentials.")
-#         data['user'] = user
-#         return data
-
-
-# class ForgotPasswordSerializer(serializers.Serializer):
-#     email = serializers.EmailField()
-
-#     def validate_email(self, value):
-#         if not User.objects.filter(email=value).exists():
-#             raise serializers.ValidationError("Invalid email.")
-#         return value
-
-
-# class ResetPasswordSerializer(serializers.Serializer):
-#     email = serializers.EmailField()
-#     password = serializers.CharField(write_only=True)
-#     repeated_password = serializers.CharField(write_only=True)
-
-#     def validate_password(self, value):
-#         if len(value) < 8:
-#             raise serializers.ValidationError(
-#                 "Password must be at least 8 characters.")
-#         if value.isdigit() or value.isalpha():
-#             raise serializers.ValidationError(
-#                 "Password must contain both letters and numbers.")
-#         return value
-
-#     def validate(self, data):
-#         if data['password'] != data['repeated_password']:
-#             raise serializers.ValidationError("Passwords do not match.")
-
-#         if not User.objects.filter(email=data['email']).exists():
-#             raise serializers.ValidationError(
-#                 "User with this email does not exist.")
-
-#         return data
