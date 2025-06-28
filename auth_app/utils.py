@@ -1,8 +1,9 @@
 # Third-party suppliers
 import re
 from django.contrib.auth import get_user_model
-from rest_framework import serializers
+from rest_framework import serializers, status
 from rest_framework.authtoken.models import Token
+from rest_framework.response import Response
 
 User = get_user_model()
 
@@ -63,3 +64,27 @@ def validate_token_key(token_key: str) -> None:
         raise serializers.ValidationError(
             'Please check your data and try it again.'
         )
+
+
+def validate_serializer_or_400(serializer):
+    """
+    Validate a serializer.
+    Returns status code 400 on failure, otherwise none.
+    """
+    if not serializer.is_valid():
+        return Response(
+            {'detail': 'Please check your data and try it again.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    return None
+
+
+def build_auth_response(user, status_code):
+    """
+    Returns (payload, status_code) for a user’s auth token.
+    """
+    token, provided = Token.objects.get_or_create(user=user)
+    return (
+        {'token': token.key, 'email': user.email, 'user_id': user.id},
+        status_code
+    )

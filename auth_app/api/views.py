@@ -12,6 +12,10 @@ from .serializers import (
     ForgotPasswordSerializer, LoginSerializer,
     RegistrationSerializer, ResetPasswordSerializer,
 )
+from auth_app.utils import (
+    build_auth_response,
+    validate_serializer_or_400,
+)
 
 User = get_user_model()
 
@@ -30,13 +34,10 @@ class RegistrationView(APIView):
         Returns token, email and user_id.
         """
         serializer = RegistrationSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(
-                {'detail': 'Please check your data and try it again.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        error = validate_serializer_or_400(serializer)
+        if error:
+            return error
         user = serializer.save()
-        token, _ = Token.objects.get_or_create(user=user)
 
         send_mail(
             'Welcome to Videoflix',
@@ -46,10 +47,9 @@ class RegistrationView(APIView):
             fail_silently=True,
         )
 
-        return Response(
-            {'token': token.key, 'email': user.email, 'user_id': user.id},
-            status=status.HTTP_201_CREATED
-        )
+        view_payload, view_status = build_auth_response(
+            user, status.HTTP_201_CREATED)
+        return Response(view_payload, status=view_status)
 
 
 class LoginView(APIView):
@@ -65,17 +65,13 @@ class LoginView(APIView):
         Returns token, email and user_id.
         """
         serializer = LoginSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(
-                {'detail': 'Please check your data and try it again.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        error = validate_serializer_or_400(serializer)
+        if error:
+            return error
         user = serializer.validated_data['user']
-        token, _ = Token.objects.get_or_create(user=user)
-        return Response(
-            {'token': token.key, 'email': user.email, 'user_id': user.id},
-            status=status.HTTP_200_OK
-        )
+        view_payload, view_status = build_auth_response(
+            user, status.HTTP_200_OK)
+        return Response(view_payload, status=view_status)
 
 
 class ForgotPasswordView(APIView):
@@ -92,26 +88,22 @@ class ForgotPasswordView(APIView):
         Returns token, email and user_id.
         """
         serializer = ForgotPasswordSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(
-                {'detail': 'Please check your data and try it again.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        error = validate_serializer_or_400(serializer)
+        if error:
+            return error
         user = User.objects.get(email=serializer.validated_data['email'])
-        token, _ = Token.objects.get_or_create(user=user)
+        view_payload, view_status = build_auth_response(
+            user, status.HTTP_200_OK)
 
         send_mail(
             'Reset your Videoflix password',
-            f'Use this token to reset your password: {token.key}',
+            f'Use this token to reset your password: {view_payload['token']}',
             'no-reply@videoflix.com',
             [user.email],
             fail_silently=True,
         )
 
-        return Response(
-            {'token': token.key, 'email': user.email, 'user_id': user.id},
-            status=status.HTTP_200_OK
-        )
+        return Response(view_payload, status=view_status)
 
 
 class ResetPasswordView(APIView):
@@ -127,11 +119,9 @@ class ResetPasswordView(APIView):
         Returns token, email and user_id.
         """
         serializer = ResetPasswordSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(
-                {'detail': 'Please check your data and try it again.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        error = validate_serializer_or_400(serializer)
+        if error:
+            return error
         token = serializer.save()
         user = token.user
         return Response(
