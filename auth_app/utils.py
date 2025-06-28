@@ -1,6 +1,8 @@
 # Third-party suppliers
 import re
 from django.contrib.auth import get_user_model
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
 from rest_framework import serializers, status
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
@@ -87,4 +89,46 @@ def build_auth_response(user, status_code):
     return (
         {'token': token.key, 'email': user.email, 'user_id': user.id},
         status_code
+    )
+
+
+def send_templated_email(
+    subject: str, template_name: str, context: dict,
+    to_email: str, from_email: str = 'info@Videoflix.com'
+) -> None:
+    """
+    Renders the given template with context and sends it as an HTML email.
+    """
+    html_body = render_to_string(template_name, context)
+    msg = EmailMultiAlternatives(subject, "", from_email, [to_email])
+    msg.attach_alternative(html_body, "text/html")
+    msg.send(fail_silently=True)
+
+
+def send_confirm_email_email(user, activation_link):
+    """
+    Renders the confirm-email template and sends it as an HTML email.
+    """
+    send_templated_email(
+        subject="Confirm your email",
+        template_name="auth_app/confirm-email.html",
+        context={
+            "email": user.email,
+            "activation_link": activation_link,
+        },
+        to_email=user.email,
+    )
+
+
+def send_reset_password_email(user, reset_link):
+    """
+    Renders the reset-password template and sends it as an HTML email.
+    """
+    send_templated_email(
+        subject="Reset your password",
+        template_name="auth_app/reset-password.html",
+        context={
+                "reset_link": reset_link,
+        },
+        to_email=user.email,
     )
