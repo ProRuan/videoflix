@@ -1,6 +1,7 @@
 # Third-party suppliers
 from django.contrib.auth.models import (
-    AbstractBaseUser, BaseUserManager,
+    AbstractBaseUser,
+    BaseUserManager,
     PermissionsMixin
 )
 from django.db import models

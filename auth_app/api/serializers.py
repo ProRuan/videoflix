@@ -1,8 +1,15 @@
 # Third-party suppliers
-import re
 from django.contrib.auth import authenticate, get_user_model
 from rest_framework import serializers
 from rest_framework.authtoken.models import Token
+
+# Local imports
+from auth_app.utils import (
+    validate_email_exists,
+    validate_email_unique,
+    validate_passwords,
+    validate_token_key,
+)
 
 User = get_user_model()
 
@@ -11,7 +18,7 @@ class RegistrationSerializer(serializers.Serializer):
     """
     Represents a registration serializer.
     Provides methods to validate email and passwords.
-    Creates user based on valid email and password.
+    Creates a user based on valid email and password.
     """
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
@@ -19,32 +26,21 @@ class RegistrationSerializer(serializers.Serializer):
 
     def validate_email(self, value):
         """
-        Validate email for uniqueness.
+        Validate an email for uniqueness.
         """
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError(
-                "Please check your data and try it again."
-            )
+        validate_email_unique(value)
         return value
 
     def validate(self, data):
         """
         Validate passwords for validity and match.
         """
-        if data['password'] != data['repeated_password']:
-            raise serializers.ValidationError(
-                'Please check your data and try it again.'
-            )
-        pattern = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$'
-        if not re.match(pattern, data['password']):
-            raise serializers.ValidationError(
-                'Please check your data and try it again.'
-            )
+        validate_passwords(data['password'], data['repeated_password'])
         return data
 
     def create(self, validated_data):
         """
-        Create user by validated email and password.
+        Create a user by validated email and password.
         """
         return User.objects.create_user(
             email=validated_data['email'],
@@ -83,12 +79,9 @@ class ForgotPasswordSerializer(serializers.Serializer):
 
     def validate_email(self, value):
         """
-        Validate email for existence.
+        Validate an email for existence.
         """
-        if not User.objects.filter(email=value).exists():
-            raise serializers.ValidationError(
-                'Please check your data and try it again.'
-            )
+        validate_email_exists(value)
         return value
 
 
@@ -96,7 +89,7 @@ class ResetPasswordSerializer(serializers.Serializer):
     """
     Represents a reset-password serializer.
     Provides methods to validate token and passwords.
-    Updates user password by validated data.
+    Updates a user password by validated data.
     """
     token = serializers.CharField()
     password = serializers.CharField(write_only=True)
@@ -106,32 +99,19 @@ class ResetPasswordSerializer(serializers.Serializer):
         """
         Validate passwords for validity and match.
         """
-        if data['password'] != data['repeated_password']:
-            raise serializers.ValidationError(
-                'Please check your data and try it again.'
-            )
-        pattern = r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$'
-        if not re.match(pattern, data['password']):
-            raise serializers.ValidationError(
-                'Please check your data and try it again.'
-            )
+        validate_passwords(data['password'], data['repeated_password'])
         return data
 
     def validate_token(self, value):
         """
-        Validate token for existence.
+        Validate a token for existence.
         """
-        try:
-            Token.objects.get(key=value)
-        except Token.DoesNotExist:
-            raise serializers.ValidationError(
-                'Please check your data and try it again.'
-            )
+        validate_token_key(value)
         return value
 
     def save(self):
         """
-        Update user password.
+        Update a user password.
         """
         token_key = self.validated_data['token']
         password = self.validated_data['password']

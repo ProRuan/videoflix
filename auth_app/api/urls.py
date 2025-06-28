@@ -3,8 +3,10 @@ from django.urls import path
 
 # Local imports
 from .views import (
-    ForgotPasswordView, LoginView,
-    RegistrationView, ResetPasswordView
+    ForgotPasswordView,
+    LoginView,
+    RegistrationView,
+    ResetPasswordView
 )
 
 urlpatterns = [
