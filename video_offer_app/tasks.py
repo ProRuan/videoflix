@@ -15,18 +15,15 @@ def _run(cmd):
 
 def generate_hls(instance_id):
     """
-    For a given Video PK, produce 1080p, 720p, 360p, 120p HLS streams,
-    plus a master playlist.
+    For a given Video PK, produce HLS streams for each resolution
+    and update the model.available_resolutions list.
     """
     vid = Video.objects.get(id=instance_id)
     source = vid.video_file.path
     base = os.path.splitext(os.path.basename(source))[0]
-
-    # where to write HLS files
     hls_root = os.path.join(settings.MEDIA_ROOT, 'videos', 'hls', base)
     os.makedirs(hls_root, exist_ok=True)
 
-    # Define your renditions
     renditions = [
         {'name': '1080p', 'width': 1920, 'height': 1080,
             'v_bitrate': '5000k', 'a_bitrate': '192k'},
@@ -39,28 +36,26 @@ def generate_hls(instance_id):
     ]
 
     playlist_entries = []
+    generated = []
 
     for r in renditions:
-        # create folder for each variant
         out_dir = os.path.join(hls_root, r['name'])
         os.makedirs(out_dir, exist_ok=True)
-
-        segment_pattern = os.path.join(out_dir, 'seg_%03d.ts')
-        playlist_file = os.path.join(out_dir, 'index.m3u8')
+        seg_pattern = os.path.join(out_dir, 'seg_%03d.ts')
+        variant_playlist = os.path.join(out_dir, 'index.m3u8')
 
         cmd = [
             'ffmpeg', '-i', source,
             '-vf', f"scale=w={r['width']}:h={r['height']}",
             '-c:v', 'libx264', '-b:v', r['v_bitrate'], '-preset', 'fast',
             '-c:a', 'aac',    '-b:a', r['a_bitrate'],
-            '-hls_time', '10',
-            '-hls_playlist_type', 'vod',
-            '-hls_segment_filename', segment_pattern,
-            playlist_file
+            '-hls_time', '10', '-hls_playlist_type', 'vod',
+            '-hls_segment_filename', seg_pattern,
+            variant_playlist
         ]
         _run(cmd)
+        generated.append(r['name'])
 
-        # store for master playlist
         bandwidth = int(r['v_bitrate'].rstrip('k')) * 1000
         playlist_entries.append({
             'uri': f"{r['name']}/index.m3u8",
@@ -68,7 +63,7 @@ def generate_hls(instance_id):
             'resolution': f"{r['width']}x{r['height']}"
         })
 
-    # build master playlist
+    # master playlist
     master_path = os.path.join(hls_root, f"{base}.m3u8")
     with open(master_path, 'w') as m:
         m.write('#EXTM3U\n')
@@ -77,9 +72,12 @@ def generate_hls(instance_id):
                 f"#EXT-X-STREAM-INF:BANDWIDTH={e['bandwidth']},RESOLUTION={e['resolution']}\n")
             m.write(f"{e['uri']}\n")
 
-    # save to model
     with open(master_path, 'rb') as f:
-        vid.hls_playlist.save(f"{base}.m3u8", File(f), save=True)
+        vid.hls_playlist.save(f"{base}.m3u8", File(f), save=False)
+
+    # update available_resolutions
+    vid.available_resolutions = generated
+    vid.save(update_fields=['hls_playlist', 'available_resolutions'])
 
 
 # def generate_hls(instance_id):
