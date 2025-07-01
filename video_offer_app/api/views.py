@@ -1,3 +1,37 @@
+# # video_offer_app/views.py
+
+# from rest_framework.decorators import action
+# from rest_framework.response import Response
+# from rest_framework import viewsets, status
+# import os
+# from django.conf import settings
+# from .models import Video
+# from .serializers import VideoSerializer
+
+# class VideoViewSet(viewsets.ModelViewSet):
+#     queryset = Video.objects.all()
+#     serializer_class = VideoSerializer
+
+#     @action(detail=True, url_path='hls/(?P<res>[^/.]+)')
+#     def hls_variant(self, request, pk=None, res=None):
+#         """
+#         GET /videos/{pk}/hls/720p/  →  returns the URL of the 720p variant playlist
+#         """
+#         vid = self.get_object()
+#         if res not in vid.available_resolutions:
+#             return Response(
+#                 {'detail': f'Resolution {res} not available.'},
+#                 status=status.HTTP_404_NOT_FOUND
+#             )
+#         # build the URL
+#         rel = vid.hls_playlist.name  # e.g. videos/hls/<base>/<base>.m3u8
+#         base_dir = os.path.dirname(rel)
+#         variant_path = os.path.join(base_dir, res, 'index.m3u8')
+#         return Response({
+#             'url': request.build_absolute_uri(settings.MEDIA_URL + variant_path)
+#         })
+
+
 # views.py
 from .permissions import IsAdminOrReadOnly
 # from .models import Video
