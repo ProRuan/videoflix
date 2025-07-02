@@ -51,7 +51,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'auth_app',
-    'video_offer_app.apps.VideoOfferAppConfig',
+    'video_app.apps.VideoAppConfig',
+    # 'video_offer_app.apps.VideoOfferAppConfig',
 ]
 
 AUTH_USER_MODEL = 'auth_app.User'
