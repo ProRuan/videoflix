@@ -4,6 +4,8 @@ from rest_framework import serializers
 from video_offer_app.models import Video
 import os
 
+from video_offer_app.models import VideoProgress
+
 
 class VideoSerializer(serializers.ModelSerializer):
     # Add a read‑only method field listing the available HLS variants
@@ -42,6 +44,13 @@ class VideoSerializer(serializers.ModelSerializer):
             )
         except FileNotFoundError:
             return []
+
+
+class VideoProgressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VideoProgress
+        fields = ('user', 'video', 'last_position', 'updated_at')
+        read_only_fields = ('user', 'updated_at')
 
 
 # from rest_framework import serializers

@@ -36,17 +36,18 @@
 from .permissions import IsAdminOrReadOnly
 # from .models import Video
 from django.shortcuts import get_object_or_404
-from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
 from rest_framework.views import APIView
+from rest_framework import generics, viewsets
 from rest_framework import status, authentication
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.generics import ListCreateAPIView
 from rest_framework.parsers import MultiPartParser, FormParser
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from video_offer_app.models import Video
-from .serializers import VideoSerializer
+from video_offer_app.models import Video, VideoProgress
+from .serializers import VideoSerializer, VideoProgressSerializer
 
 
 class VideoListCreateView(ListCreateAPIView):
@@ -153,3 +154,123 @@ class VideoDetailView(APIView):
         video = get_object_or_404(Video, pk=pk)
         video.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# class VideoProgressViewSet(viewsets.ModelViewSet):
+#     """
+#     list:    Not needed (you’ll filter by video/user)
+#     retrieve: GET /progress/{pk}/
+#     create:   POST /progress/  (video + last_position)
+#     update:   PATCH /progress/{pk}/
+#     """
+#     queryset = VideoProgress.objects.all()
+#     serializer_class = VideoProgressSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         # Users can only see their own progress
+#         return self.queryset.filter(user=self.request.user)
+
+#     def perform_create(self, serializer):
+#         # Attach current user
+#         serializer.save(user=self.request.user)
+
+#     def perform_update(self, serializer):
+#         # Prevent updating someone else’s
+#         if serializer.instance.user != self.request.user:
+#             raise PermissionDenied("Cannot update another user’s progress")
+#         serializer.save()
+
+class VideoProgressListCreate(generics.ListCreateAPIView):
+    """
+    GET  /api/progress/?video=<id>   → list (filtered by video & user)
+    POST /api/progress/              → upsert-or-delete progress
+    """
+    serializer_class = VideoProgressSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = VideoProgress.objects.filter(user=self.request.user)
+        video_id = self.request.query_params.get('video')
+        if video_id:
+            qs = qs.filter(video_id=video_id)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        # Expect payload: { "video": 123, "last_position": N }
+        vid_id = request.data.get('video')
+        pos = int(request.data.get('last_position', 0))
+        try:
+            video = Video.objects.get(pk=vid_id)
+        except Video.DoesNotExist:
+            return Response({'detail': 'Video not found.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # If in-progress, upsert; otherwise delete any existing and 204
+        if 0 < pos < (video.duration or 0):
+            obj, created = VideoProgress.objects.update_or_create(
+                user=request.user, video=video,
+                defaults={'last_position': pos}
+            )
+            serializer = self.get_serializer(obj)
+            return Response(serializer.data,
+                            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+        # not started or finished → remove any progress
+        VideoProgress.objects.filter(user=request.user, video=video).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class VideoProgressRetrieveUpdateDelete(generics.RetrieveUpdateDestroyAPIView):
+    queryset = VideoProgress.objects.all()
+    serializer_class = VideoProgressSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        obj = super().get_object()
+        if obj.user_id != self.request.user.id:
+            raise PermissionDenied("Cannot access another user’s progress")
+        return obj
+
+    def patch(self, request, *args, **kwargs):
+        instance = self.get_object()
+        pos = int(request.data.get('last_position', 0))
+        duration = instance.video.duration or 0
+
+        # Only update if in-progress
+        if 0 < pos < duration:
+            instance.last_position = pos
+            instance.save(update_fields=['last_position'])
+            return Response(self.get_serializer(instance).data)
+        # Otherwise do nothing here (frontend should call DELETE)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+# class VideoProgressRetrieveUpdate(generics.RetrieveUpdateAPIView):
+#     """
+#     GET   /api/progress/<pk>/   → retrieve single record
+#     PATCH /api/progress/<pk>/   → update or delete progress
+#     """
+#     queryset = VideoProgress.objects.all()
+#     serializer_class = VideoProgressSerializer
+#     permission_classes = [IsAuthenticated]
+
+#     def get_object(self):
+#         obj = super().get_object()
+#         if obj.user_id != self.request.user.id:
+#             raise PermissionDenied("Cannot access another user’s progress")
+#         return obj
+
+#     def patch(self, request, *args, **kwargs):
+#         instance = self.get_object()
+#         pos = int(request.data.get('last_position', 0))
+#         duration = instance.video.duration or 0
+
+#         # In‑progress → update; else → delete + 204
+#         if 0 < pos < duration:
+#             instance.last_position = pos
+#             instance.save(update_fields=['last_position'])
+#             serializer = self.get_serializer(instance)
+#             return Response(serializer.data)
+#         else:
+#             instance.delete()
+#             return Response(status=status.HTTP_204_NO_CONTENT)
