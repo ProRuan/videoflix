@@ -1,6 +1,9 @@
 from django.db import models
 from django.contrib.postgres.fields import ArrayField
 from datetime import date
+from .storage_backends import OverwriteStorage
+
+overwrite_storage = OverwriteStorage()
 
 
 class Video(models.Model):
@@ -9,14 +12,14 @@ class Video(models.Model):
     title = models.CharField(max_length=80)
     description = models.CharField(max_length=500)
     video_file = models.FileField(
-        upload_to='videos/original/', blank=True, null=True)
+        upload_to='videos/original/', storage=overwrite_storage, blank=True, null=True)
     hls_playlist = models.FileField(
-        upload_to='videos/hls/',    blank=True, null=True)
+        upload_to='videos/hls/',    storage=overwrite_storage, blank=True, null=True)
     preview_clip = models.FileField(
-        upload_to='videos/preview/', blank=True, null=True)
+        upload_to='videos/preview/', storage=overwrite_storage, blank=True, null=True)
     thumbnail_image = models.ImageField(
-        upload_to='videos/thumbs/', blank=True, null=True)
-    sprite_sheet = models.FileField(upload_to='videos/sprites/', blank=True, null=True,
+        upload_to='videos/thumbs/', storage=overwrite_storage, blank=True, null=True)
+    sprite_sheet = models.FileField(upload_to='videos/sprites/', storage=overwrite_storage, blank=True, null=True,
                                     help_text="Contact sheet image generated automatically")
     duration = models.IntegerField(
         blank=True, null=True, help_text="Duration in seconds")
