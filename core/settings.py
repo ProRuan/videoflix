@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'auth_app',
     'video_app.apps.VideoAppConfig',
+    'video_progress_app',
     # 'video_offer_app.apps.VideoOfferAppConfig',
 ]
 

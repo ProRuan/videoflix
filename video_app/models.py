@@ -37,101 +37,29 @@ class Video(models.Model):
         return self.title
 
 
-class VideoProgress(models.Model):
-    user = models.ForeignKey(
-        User,
-        on_delete=models.CASCADE,
-        related_name='video_progress'
-    )
-    video = models.ForeignKey(
-        'Video',
-        on_delete=models.CASCADE,
-        related_name='progress_entries'
-    )
-    last_position = models.IntegerField(
-        default=0,
-        help_text='Last playback time in seconds'
-    )
-    updated_at = models.DateTimeField(
-        auto_now=True,
-        help_text='When this position was last updated'
-    )
+# class VideoProgress(models.Model):
+#     user = models.ForeignKey(
+#         User,
+#         on_delete=models.CASCADE,
+#         related_name='video_progress'
+#     )
+#     video = models.ForeignKey(
+#         'Video',
+#         on_delete=models.CASCADE,
+#         related_name='progress_entries'
+#     )
+#     last_position = models.IntegerField(
+#         default=0,
+#         help_text='Last playback time in seconds'
+#     )
+#     updated_at = models.DateTimeField(
+#         auto_now=True,
+#         help_text='When this position was last updated'
+#     )
 
-    class Meta:
-        unique_together = ('user', 'video')
-        ordering = ['-updated_at']
-
-    def __str__(self):
-        return f"{self.user} @ {self.last_position:.1f}s of {self.video}"
-
-
-# from django.db import models
-# from datetime import date
-
-
-# class Video(models.Model):
-#     created_at = models.DateField(default=date.today)
-#     genre = models.CharField(max_length=80, default='')
-#     title = models.CharField(max_length=80)
-#     description = models.CharField(max_length=500)
-#     video_file = models.FileField(
-#         upload_to='videos/original/', blank=True, null=True)
-#     hls_playlist = models.FileField(
-#         upload_to='videos/hls/',    blank=True, null=True)
-#     preview_clip = models.FileField(
-#         upload_to='videos/preview/', blank=True, null=True)
-#     thumbnail_image = models.ImageField(
-#         upload_to='videos/thumbs/', blank=True, null=True)
-#     sprite_sheet = models.FileField(upload_to='videos/sprites/', blank=True,
-#                                     null=True, help_text="Contact sheet image generated automatically")
-#     duration = models.IntegerField(
-#         blank=True, null=True, help_text="Duration in seconds")
+#     class Meta:
+#         unique_together = ('user', 'video')
+#         ordering = ['-updated_at']
 
 #     def __str__(self):
-#         return self.title
-
-
-# from django.db import models
-# from datetime import date
-
-
-# class Video(models.Model):
-#     created_at = models.DateField(default=date.today)
-#     genre = models.CharField(max_length=80, default='')
-#     title = models.CharField(max_length=80)
-#     description = models.CharField(max_length=500)
-#     video_file = models.FileField(
-#         upload_to='videos/original/', blank=True, null=True)
-#     hls_playlist = models.FileField(
-#         upload_to='videos/hls/',    blank=True, null=True)
-#     preview_clip = models.FileField(
-#         upload_to='videos/preview/', blank=True, null=True)
-#     thumbnail_image = models.ImageField(
-#         upload_to='videos/thumbs/', blank=True, null=True)
-#     duration = models.IntegerField(
-#         blank=True, null=True, help_text="Duration in seconds")
-
-#     def __str__(self):
-#         return self.title
-
-
-# from django.db import models
-# from datetime import date
-
-
-# class Video(models.Model):
-#     created_at = models.DateField(default=date.today)
-#     genre = models.CharField(max_length=80, default='')
-#     title = models.CharField(max_length=80)
-#     description = models.CharField(max_length=500)
-#     video_file = models.FileField(
-#         upload_to='videos/original/', blank=True, null=True)
-#     hls_playlist = models.FileField(
-#         upload_to='videos/hls/',    blank=True, null=True)
-#     preview_clip = models.FileField(
-#         upload_to='videos/preview/', blank=True, null=True)
-#     thumbnail_image = models.ImageField(
-#         upload_to='videos/thumbs/', blank=True, null=True)
-
-#     def __str__(self):
-#         return self.title
+#         return f"{self.user} @ {self.last_position:.1f}s of {self.video}"
