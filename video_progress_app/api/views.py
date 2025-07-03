@@ -22,6 +22,4 @@ class VideoProgressDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     serializer_class = VideoProgressSerializer
     permission_classes = [permissions.IsAuthenticated, IsOwnerOnly]
-
-    def get_queryset(self):
-        return VideoProgress.objects.filter(user=self.request.user)
+    queryset = VideoProgress.objects.all()

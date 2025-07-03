@@ -15,12 +15,16 @@ class VideoProgressSerializer(serializers.ModelSerializer):
         if value < 0:
             raise serializers.ValidationError(
                 "last_position must be non-negative.")
-        # check against video duration if available
-        video = self.initial_data.get('video')
-        try:
-            vid = Video.objects.get(pk=video)
-        except Video.DoesNotExist:
-            raise serializers.ValidationError("Video not found.")
+
+        # If no `video` in payload, use the existing instance’s video
+        if 'video' not in self.initial_data and self.instance:
+            vid = self.instance.video
+        else:
+            try:
+                vid = Video.objects.get(pk=self.initial_data.get('video'))
+            except Video.DoesNotExist:
+                raise serializers.ValidationError("Video not found.")
+
         if vid.duration is not None and value > vid.duration:
             raise serializers.ValidationError(
                 "last_position exceeds video duration.")
