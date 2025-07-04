@@ -35,6 +35,7 @@ class Video(models.Model):
     )
     duration = models.IntegerField(
         blank=True, null=True,
+        help_text='Duration in seconds'
     )
     available_resolutions = ArrayField(
         models.CharField(max_length=10), default=list,

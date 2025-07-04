@@ -23,7 +23,6 @@ class VideoProgress(models.Model):
     )
     updated_at = models.DateTimeField(
         auto_now=True,
-        help_text='When this position was last updated'
     )
 
     class Meta:
