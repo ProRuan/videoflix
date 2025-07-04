@@ -16,35 +16,29 @@ class Video(models.Model):
     video_file = models.FileField(
         upload_to='videos/original/', storage=overwrite_storage,
         blank=True, null=True,
-        help_text='Upload a video file.'
     )
     hls_playlist = models.FileField(
         upload_to='videos/hls/', storage=overwrite_storage,
         blank=True, null=True,
-        help_text='Auto-generated upon file upload.'
     )
     preview_clip = models.FileField(
         upload_to='videos/preview/', storage=overwrite_storage,
         blank=True, null=True,
-        help_text='Auto-generated upon file upload.'
     )
     thumbnail_image = models.ImageField(
         upload_to='videos/thumbs/', storage=overwrite_storage,
         blank=True, null=True,
-        help_text='Auto-generated upon file upload.'
     )
     sprite_sheet = models.FileField(
         upload_to='videos/sprites/', storage=overwrite_storage,
         blank=True, null=True,
-        help_text='Auto-generated upon file upload.'
     )
     duration = models.IntegerField(
         blank=True, null=True,
-        help_text='Auto-generated upon file upload.'
     )
     available_resolutions = ArrayField(
         models.CharField(max_length=10), default=list,
-        blank=True, help_text='Auto-generated upon file upload.'
+        blank=True,
     )
     created_at = models.DateField(default=date.today)
 
