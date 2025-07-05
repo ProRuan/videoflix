@@ -1,17 +1,23 @@
-from rest_framework import generics
+# Third-party suppliers
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import generics
 from rest_framework.filters import OrderingFilter
 
-from video_app.models import Video
-from .serializers import VideoSerializer
-from .permissions import IsAuthenticatedReadOnly
+# Local imports
 from .filters import VideoFilter
 from .paginations import VideoPagination
+from .permissions import IsAuthenticatedReadOnly
+from .serializers import VideoDetailSerializer, VideoSerializer
+from video_app.models import Video
 
 
 class VideoListView(generics.ListAPIView):
     """
-    GET /api/videos/ - list videos, paginated, filtered by genre, sorted newest-first.
+    Represents a video list view for
+        - GET /api/videos/
+            - list videos
+            - filtered by genre
+            - sorted newest first
     """
     queryset = Video.objects.all()
     serializer_class = VideoSerializer
@@ -27,8 +33,9 @@ class VideoListView(generics.ListAPIView):
 
 class VideoDetailView(generics.RetrieveAPIView):
     """
-    GET /api/videos/{pk}/ - retrieve a single video.
+    Represents a video detail view.
+        - GET /api/videos/{pk}/ - retrieve a single video.
     """
     queryset = Video.objects.all()
-    serializer_class = VideoSerializer
+    serializer_class = VideoDetailSerializer
     permission_classes = [IsAuthenticatedReadOnly]

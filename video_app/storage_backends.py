@@ -1,9 +1,17 @@
+# Third-party suppliers
 from django.core.files.storage import FileSystemStorage
 
 
 class OverwriteStorage(FileSystemStorage):
+    """
+    Represents a custom overwrite storage.
+    """
+
     def get_available_name(self, name, max_length=None):
-        # If the file already exists, remove it so we can overwrite
+        """
+        Check if the file already exists and overwrite it.
+        Otherwise, continue.
+        """
         if self.exists(name):
             self.delete(name)
         return name

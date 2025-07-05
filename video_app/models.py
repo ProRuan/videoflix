@@ -1,8 +1,13 @@
-from django.db import models
-from django.contrib.postgres.fields import ArrayField
+# Standard library
 from datetime import date
-from .storage_backends import OverwriteStorage
+
+# Third-party suppliers
 from django.contrib.auth import get_user_model
+from django.contrib.postgres.fields import ArrayField
+from django.db import models
+
+# Local imports
+from .storage_backends import OverwriteStorage
 
 User = get_user_model()
 
@@ -10,9 +15,12 @@ overwrite_storage = OverwriteStorage()
 
 
 class Video(models.Model):
-    title = models.CharField(max_length=80)
+    """
+    Represents a video.
+    """
+    title = models.CharField(max_length=80, default='')
     genre = models.CharField(max_length=80, default='')
-    description = models.CharField(max_length=500)
+    description = models.CharField(max_length=500, default='')
     video_file = models.FileField(
         upload_to='videos/original/', storage=overwrite_storage,
         blank=True, null=True,
@@ -44,4 +52,7 @@ class Video(models.Model):
     created_at = models.DateField(default=date.today)
 
     def __str__(self):
+        """
+        Get a string representing a video by title.
+        """
         return self.title
