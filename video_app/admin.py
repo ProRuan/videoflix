@@ -25,7 +25,7 @@ class VideoAdmin(admin.ModelAdmin):
             ),
             'classes': ('wide',),
             'description': gettext_lazy(
-                'Auto‑generated upon upload.'
+                'Auto‑generated upon upload. '
                 'Generation time may vary based on video length.'
             ),
         }),

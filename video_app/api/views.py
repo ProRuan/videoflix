@@ -5,7 +5,6 @@ from rest_framework.filters import OrderingFilter
 
 # Local imports
 from .filters import VideoFilter
-from .paginations import VideoPagination
 from .permissions import IsAuthenticatedReadOnly
 from .serializers import VideoDetailSerializer, VideoSerializer
 from video_app.models import Video
@@ -27,8 +26,6 @@ class VideoListView(generics.ListAPIView):
     filterset_class = VideoFilter
     ordering_fields = ['created_at']
     ordering = ['-created_at']
-
-    pagination_class = VideoPagination
 
 
 class VideoDetailView(generics.RetrieveAPIView):

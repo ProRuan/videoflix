@@ -7,6 +7,8 @@ from rest_framework.test import APIClient
 
 from video_app.models import Video
 
+User = get_user_model()
+
 
 @pytest.fixture
 def api_client():
@@ -15,7 +17,6 @@ def api_client():
 
 @pytest.fixture
 def user(db):
-    User = get_user_model()
     return User.objects.create_user(email='test@example.com', password='password')
 
 
@@ -49,11 +50,11 @@ class TestVideoList:
     url = reverse('video-list')
 
     def test_list_empty(self, auth_client):
-        response = auth_client.get(self.url)
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert data['count'] == 0
-        assert data['results'] == []
+        resp = auth_client.get(self.url)
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
+        assert isinstance(data, list)
+        assert data == []
 
     def test_list_sorted(self, auth_client, make_videos):
         today = date.today()
@@ -61,18 +62,18 @@ class TestVideoList:
         v2 = make_videos(count=1, created_at=today - timedelta(days=1))[0]
         v3 = make_videos(count=1, created_at=today)[0]
 
-        response = auth_client.get(self.url)
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()['results']
+        resp = auth_client.get(self.url)
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
         assert [item['id'] for item in data] == [v3.id, v2.id, v1.id]
 
     def test_filter_by_genre(self, auth_client, make_videos):
         make_videos(count=1, genre='Comedy')
         actions = make_videos(count=2, genre='Action')
 
-        response = auth_client.get(self.url, {'genre': 'Action'})
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()['results']
+        resp = auth_client.get(self.url, {'genre': 'Action'})
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
         ids = {item['id'] for item in data}
         assert ids == {v.id for v in actions}
 
@@ -83,19 +84,7 @@ class TestVideoList:
         latest = make_videos(count=1, genre='Action', created_at=today)[0]
         make_videos(count=1, genre='Comedy', created_at=today)
 
-        response = auth_client.get(self.url, {'genre': 'Action'})
-        assert response.status_code == status.HTTP_200_OK
-        data = response.json()['results']
+        resp = auth_client.get(self.url, {'genre': 'Action'})
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
         assert data[0]['id'] == latest.id
-
-
-@pytest.mark.django_db
-def test_pagination(auth_client, make_videos):
-    make_videos(count=6)
-    response = auth_client.get(reverse('video-list'))
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    assert 'results' in data and len(data['results']) == 4
-    assert data['count'] == 6
-    assert data['next']
-    assert data['previous'] is None
