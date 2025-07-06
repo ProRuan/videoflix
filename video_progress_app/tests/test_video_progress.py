@@ -122,7 +122,8 @@ class TestVideoProgressListCreate:
 
     def test_get_ordering_newest_first(self, auth_client, user):
         """
-        Ensure video progress list shows newest videos first (status code 200).
+        Ensure video progress list shows newest videos first
+        (status code 200).
         """
         video1 = Video.objects.create(
             title='Video A', description='Desc A', genre='G')
@@ -149,8 +150,8 @@ class TestVideoProgressListCreate:
 
     def test_post_bad_request_missing_fields(self, auth_client):
         """
-        Ensure authenticated user can not create a video progress with incomplete
-        request data (status code 400).
+        Ensure authenticated user can not create a video progress with
+        incomplete request data (status code 400).
         """
         resp = auth_client.post(self.url, {}, format='json')
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
@@ -161,7 +162,10 @@ class TestVideoProgressListCreate:
         invalid playback time (status code 400).
         """
         resp = auth_client.post(
-            self.url, {'video': make_video.id, 'last_position': -1}, format='json')
+            self.url,
+            {'video': make_video.id, 'last_position': -1},
+            format='json'
+        )
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_post_not_found_video(self, auth_client):
