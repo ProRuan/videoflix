@@ -54,7 +54,7 @@ def user(db):
 @pytest.fixture
 def auth_client(api_client, user):
     """
-    Return an API client authenticated as 'user'.
+    Return an API client authenticated as user.
     """
     api_client.force_authenticate(user=user)
     return api_client
