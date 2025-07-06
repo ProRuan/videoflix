@@ -14,11 +14,11 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+# Third-party suppliers
+from django.conf import settings
+from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
-
-from django.conf import settings
-from django.conf.urls.static import static  # <-- import this
 
 
 urlpatterns = [
@@ -27,7 +27,6 @@ urlpatterns = [
     path('django-rq/', include('django_rq.urls')),
     path('api/', include('auth_app.api.urls')),
     path('api/videos/', include('video_app.api.urls')),
-    # path('api/videos/', include('video_offer_app.api.urls')),
     path('api/video-progress/', include('video_progress_app.api.urls')),
 ]
 

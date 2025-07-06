@@ -10,10 +10,10 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
-from pathlib import Path
-
+# Standard libraries
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
 load_dotenv()
 
@@ -54,7 +54,6 @@ INSTALLED_APPS = [
     'auth_app',
     'video_app.apps.VideoAppConfig',
     'video_progress_app',
-    # 'video_offer_app.apps.VideoOfferAppConfig',
 ]
 
 AUTH_USER_MODEL = 'auth_app.User'
@@ -188,37 +187,9 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
-    # 'DEFAULT_THROTTLE_CLASSES': [
-    #     'rest_framework.throttling.AnonRateThrottle',
-    #     'rest_framework.throttling.UserRateThrottle'
-    # ],
-    # 'DEFAULT_THROTTLE_RATES': {
-    #     'anon': '100/day',
-    #     'user': '1000/day',
-    #     'review': '1000/day',
-    #     'review-post': '100/day',
-    #     'review-patch': '100/day',
-    #     'review-delete': '100/day',
-    # },
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ]
 }
-
-# disabled/remove EMAIL_BACKEND at least (dev mode)
-# DEFAULT_FROM_EMAIL = "noreply@videoflix.com"
-# FRONTEND_URL = "http://localhost:4200"
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-# set up smtp like Gmail, SendGrind, EmailGun ...
-
-# EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'
-# EMAIL_FILE_PATH = BASE_DIR / 'sent_emails'  # Path to store email files
-
-# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-# EMAIL_HOST = 'localhost'
-# EMAIL_PORT = 1025
-# EMAIL_USE_TLS = False
-# EMAIL_HOST_USER = ''
-# EMAIL_HOST_PASSWORD = ''
