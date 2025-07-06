@@ -1,9 +1,18 @@
+# Third-party suppliers
 from rest_framework import serializers
+
+# Local imports
 from video_progress_app.models import VideoProgress
-from video_app.models import Video
+from video_progress_app.utils import (
+    exceeds_video_duration,
+    get_video_instance,
+)
 
 
 class VideoProgressSerializer(serializers.ModelSerializer):
+    """
+    Represents a video progress serializer.
+    """
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
 
     class Meta:
@@ -12,20 +21,16 @@ class VideoProgressSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'updated_at']
 
     def validate_last_position(self, value):
+        """
+        Check last_position for being non-negative and within video duration.
+        """
         if value < 0:
             raise serializers.ValidationError(
-                "last_position must be non-negative.")
-
-        # If no `video` in payload, use the existing instance’s video
-        if 'video' not in self.initial_data and self.instance:
-            vid = self.instance.video
-        else:
-            try:
-                vid = Video.objects.get(pk=self.initial_data.get('video'))
-            except Video.DoesNotExist:
-                raise serializers.ValidationError("Video not found.")
-
-        if vid.duration is not None and value > vid.duration:
+                "last_position must be non-negative."
+            )
+        video = get_video_instance(self)
+        if exceeds_video_duration(self, value, video):
             raise serializers.ValidationError(
-                "last_position exceeds video duration.")
+                "last_position exceeds video duration."
+            )
         return value
