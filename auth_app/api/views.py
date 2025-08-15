@@ -79,7 +79,7 @@ class AccountActivationView(APIView):
     """
     POST activates a user account using a token.
     Responses:
-    - 200 OK with {email, user_id} when token valid and activation done
+    - 200 OK with { token, email, user_id } when token valid and activation done
     - 400 Bad Request for missing/invalid payload
     - 404 Not Found when token not found
     """
@@ -97,10 +97,11 @@ class AccountActivationView(APIView):
             # otherwise, bad request (e.g. missing field, invalid format)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        # save activates the user and deletes the token
-        user = serializer.save()
+        # save activates the user and returns the new token instance
+        new_token = serializer.save()
+        user = new_token.user
         return Response(
-            {'email': user.email, 'user_id': user.id},
+            {'token': new_token.key, 'email': user.email, 'user_id': user.id},
             status=status.HTTP_200_OK
         )
 
@@ -214,27 +215,41 @@ class ForgotPasswordView(APIView):
 #             status=status.HTTP_200_OK
 #         )
 
-#  the user must be authenticated?!
 class ResetPasswordView(APIView):
     """
-    Accepts: { email, password, repeated_password }
-    - 400 Bad Request when serializer invalid (missing/invalid passwords => generic message)
-    - 200 OK on success with { email, user_id }
+    POST /api/reset-password/
+    Request: { token, email, password, repeated_password }
+    Success: 200 { token, email, user_id }  (fresh auth token)
+    Errors:
+      - 400 Bad Request for token invalid, password invalid/mismatch or other validation
+      - 404 Not Found if email/user not found
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
-        error = validate_serializer_or_400(serializer)
-        if error:
-            return error
+        # run validation to populate serializer.errors
+        serializer.is_valid()
+        if serializer.errors:
+            # If the email field contains 'User not found.' -> map to 404
+            email_errors = serializer.errors.get('email', [])
+            if any('User not found' in str(e) for e in email_errors):
+                return Response(serializer.errors, status=status.HTTP_404_NOT_FOUND)
 
-        user = serializer.save()
+            # For other errors (token invalid, password issues, mismatch) return generic 400
+            # Keep the generic message consistent with your other endpoints
+            return Response(
+                {'detail': 'Please check your data and try it again.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # All valid — perform save (updates password, consumes reset token, creates auth token)
+        token = serializer.save()
+        user = token.user
         return Response(
-            {'email': user.email, 'user_id': user.id},
+            {'token': token.key, 'email': user.email, 'user_id': user.id},
             status=status.HTTP_200_OK
         )
-
 
 # class EmailCheckView(APIView):
 #     permission_classes = [AllowAny]
@@ -249,6 +264,7 @@ class ResetPasswordView(APIView):
 #             return Response({"email": ["Email already registered."]}, status=status.HTTP_400_BAD_REQUEST)
 
 #         return Response({"status": "ok"}, status=status.HTTP_200_OK)
+
 
 class EmailCheckView(APIView):
     permission_classes = [AllowAny]

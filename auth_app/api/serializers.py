@@ -54,7 +54,9 @@ class AccountActivationSerializer(serializers.Serializer):
     """
     Validates activation token and activates the user on save.
     - token: required
-    - validate_token raises serializers.ValidationError('Token not found.') -> view will map to 404
+    - validate_token raises serializers.ValidationError('Token not found.') -> view maps to 404
+    - save() activates the user, deletes any existing tokens for that user (consumes
+      the activation token) and creates & returns a fresh auth token instance.
     """
     token = serializers.CharField()
 
@@ -67,13 +69,20 @@ class AccountActivationSerializer(serializers.Serializer):
 
     def save(self):
         token_key = self.validated_data['token']
-        token = Token.objects.get(key=token_key)
-        user = token.user
+        # Get the token and the associated user
+        token_obj = Token.objects.get(key=token_key)
+        user = token_obj.user
+
+        # Activate the user
         user.is_active = True
         user.save()
-        # remove token to prevent reuse
-        token.delete()
-        return user
+
+        # Delete any existing tokens for that user (consume activation/reset tokens)
+        Token.objects.filter(user=user).delete()
+
+        # Create a fresh auth token and return it for immediate use
+        new_token = Token.objects.create(user=user)
+        return new_token
 
 
 class LoginSerializer(serializers.Serializer):
@@ -157,47 +166,68 @@ class ForgotPasswordSerializer(serializers.Serializer):
 #         user.save()
 #         return token
 
+
 class ResetPasswordSerializer(serializers.Serializer):
     """
-    Reset-password serializer:
-      - email: user's email (populated by frontend via email-check + token in URL)
+    Accepts:
+      - token: the reset token provided in the reset link
+      - email: the email resolved from token (frontend sends it)
       - password, repeated_password: new password pair
-    On save() it sets the user's password and deletes any Token(s) for that user
-    so the token used for reset is not kept.
+    Validation:
+      - email must exist -> raises "User not found." (we map that to 404 in the view)
+      - token must exist and match the email -> serializer raises ValidationError (mapped to 400)
+      - password rules & match -> ValidationError (mapped to 400)
+    save():
+      - updates user's password
+      - deletes any existing Token(s) for the user (consumes reset token)
+      - creates and returns a fresh auth Token instance
     """
+    token = serializers.CharField()
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
     repeated_password = serializers.CharField(write_only=True)
 
     def validate_email(self, value):
-        """
-        Ensure email exists (so we can set the password for a real account).
-        Uses the same generic ValidationError message as other validators.
-        """
-        validate_email_exists(value)
+        # Ensure the user exists — we raise an explicit error text that the view will map to 404
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError('User not found.')
         return value
 
     def validate(self, data):
-        """
-        Validate password rules and that both passwords match.
-        """
+        # Validate passwords (strength and match)
         validate_passwords(data['password'], data['repeated_password'])
+
+        # Verify token existence
+        token_key = data.get('token')
+        try:
+            token = Token.objects.get(key=token_key)
+        except Token.DoesNotExist:
+            raise serializers.ValidationError('Token not found or invalid.')
+
+        # Verify token maps to same user email
+        user = token.user
+        if user.email != data.get('email'):
+            # Token does not belong to the provided email
+            raise serializers.ValidationError(
+                'Token does not match provided email.')
+
+        # Everything OK
         return data
 
     def save(self):
-        """
-        Update the user's password and remove any tokens for that user
-        (we do not keep the token after the reset).
-        Returns the user instance.
-        """
         email = self.validated_data['email']
         password = self.validated_data['password']
+
         user = User.objects.get(email=email)
         user.set_password(password)
         user.save()
-        # remove any existing tokens (activation/reset/auth tokens reused previously)
+
+        # Remove any existing tokens for user (consume/reset the reset token)
         Token.objects.filter(user=user).delete()
-        return user
+
+        # Create a fresh auth token for immediate use and return it
+        new_token = Token.objects.create(user=user)
+        return new_token
 
 
 class EmailCheckSerializer(serializers.Serializer):
