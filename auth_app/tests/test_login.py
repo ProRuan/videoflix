@@ -1,3 +1,4 @@
+# tests/test_login.py
 # Third-party supplier
 import pytest
 from django.contrib.auth import get_user_model
@@ -18,6 +19,7 @@ class TestLoginEndpoint:
         """
         Set up user for login tests.
         """
+        # create an active user for the success case
         self.user = User.objects.create_user(
             email='user@example.com',
             password='StrongP@ss1'
@@ -25,12 +27,12 @@ class TestLoginEndpoint:
 
     def test_login_success(self):
         """
-        Ensure valid credentials (status code 200).
-        The success response returns token, email and user_id.
+        Ensure valid credentials return 200 and contain token, email and user_id.
         """
         client = APIClient()
         data = {'email': 'user@example.com', 'password': 'StrongP@ss1'}
         response = client.post(self.endpoint, data, format='json')
+
         assert response.status_code == 200
         content = response.json()
         assert 'token' in content
@@ -39,18 +41,56 @@ class TestLoginEndpoint:
 
     def test_login_invalid_email(self):
         """
-        Ensure login with non-existent email returns status code 400.
+        Ensure login with non-existent email returns 400 with generic detail.
         """
         client = APIClient()
         data = {'email': 'wrong@example.com', 'password': 'StrongP@ss1'}
         response = client.post(self.endpoint, data, format='json')
         assert response.status_code == 400
+        assert response.json().get('detail') == 'Please check your data and try it again.'
 
     def test_login_invalid_password(self):
         """
-        Ensure login with wrong password returns status code 400.
+        Ensure login with wrong password returns 400 with generic detail.
         """
         client = APIClient()
         data = {'email': 'user@example.com', 'password': 'WrongP@ss1'}
         response = client.post(self.endpoint, data, format='json')
         assert response.status_code == 400
+        assert response.json().get('detail') == 'Please check your data and try it again.'
+
+    def test_login_missing_email(self):
+        """
+        Ensure missing email field returns 400 with generic detail.
+        """
+        client = APIClient()
+        data = {'password': 'StrongP@ss1'}
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 400
+        assert response.json().get('detail') == 'Please check your data and try it again.'
+
+    def test_login_missing_password(self):
+        """
+        Ensure missing password field returns 400 with generic detail.
+        """
+        client = APIClient()
+        data = {'email': 'user@example.com'}
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 400
+        assert response.json().get('detail') == 'Please check your data and try it again.'
+
+    def test_login_inactive_user(self):
+        """
+        Ensure an inactive (not yet activated) user cannot log in.
+        """
+        # create an inactive user
+        inactive = User.objects.create_user(
+            email='inactive@example.com',
+            password='StrongP@ss1',
+            is_active=False
+        )
+        client = APIClient()
+        data = {'email': 'inactive@example.com', 'password': 'StrongP@ss1'}
+        response = client.post(self.endpoint, data, format='json')
+        assert response.status_code == 400
+        assert response.json().get('detail') == 'Please check your data and try it again.'

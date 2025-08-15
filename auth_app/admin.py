@@ -14,7 +14,7 @@ class UserAdmin(BaseUserAdmin):
     """
     ordering = ['email']
     search_fields = ['email']
-    list_display = ['email', 'is_staff', 'is_superuser']
+    list_display = ['email', 'is_active', 'is_staff', 'is_superuser']
     readonly_fields = ['last_login', 'date_joined']
 
     fieldsets = (

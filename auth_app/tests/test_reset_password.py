@@ -1,3 +1,4 @@
+# tests/test_reset_password.py
 # Third-party suppliers
 import pytest
 from django.contrib.auth import get_user_model, authenticate
@@ -10,12 +11,12 @@ User = get_user_model()
 bad_request_response = 'Please check your data and try it again.'
 
 
-def get_data(self, password, repeated_password):
+def get_data(self, email, password, repeated_password):
     """
-    Get data containing token, password and repeated_password.
+    Get data containing email, password and repeated_password.
     """
     return {
-        'token': self.token_obj.key,
+        'email': email,
         'password': password,
         'repeated_password': repeated_password
     }
@@ -36,23 +37,28 @@ class TestResetPasswordEndpoint:
             email='user@example.com',
             password='StrongP@ss1'
         )
-        self.token_obj, provided = Token.objects.get_or_create(user=self.user)
+        # token created during forgot-password flow might exist; create one here to mimic that state
+        self.token_obj, _ = Token.objects.get_or_create(user=self.user)
 
     def test_reset_password_success(self):
         """
         Ensure valid new password updates user's password (status code 200).
-        The success response returns token, email, user_id.
+        The success response returns email and user_id and any existing token is removed.
         """
         client = APIClient()
-        data = get_data(self, 'NewP@ssw0rd', 'NewP@ssw0rd')
+        data = get_data(self, self.user.email, 'NewP@ssw0rd', 'NewP@ssw0rd')
         response = client.post(self.endpoint, data, format='json')
         assert response.status_code == 200
         content = response.json()
-        assert content['token'] == self.token_obj.key
         assert content['email'] == self.user.email
         assert content['user_id'] == self.user.id
+
+        # password was changed and user can authenticate with the new password
         user = authenticate(email=self.user.email, password='NewP@ssw0rd')
         assert user is not None and user.is_active
+
+        # token used for reset (or any existing token) should have been deleted
+        assert not Token.objects.filter(user=self.user).exists()
 
     def test_reset_password_invalid_password(self):
         """
@@ -60,7 +66,7 @@ class TestResetPasswordEndpoint:
         The response returns a generic error.
         """
         client = APIClient()
-        data = get_data(self, 'weak', 'weak')
+        data = get_data(self, self.user.email, 'weak', 'weak')
         response = client.post(self.endpoint, data, format='json')
         assert response.status_code == 400
         assert response.json().get('detail') == bad_request_response
@@ -71,7 +77,7 @@ class TestResetPasswordEndpoint:
         The response returns a generic error.
         """
         client = APIClient()
-        data = get_data(self, 'NewP@ssw0rd', 'DifferentP@ss2')
+        data = get_data(self, self.user.email, 'NewP@ssw0rd', 'DifferentP@ss2')
         response = client.post(self.endpoint, data, format='json')
         assert response.status_code == 400
         assert response.json().get('detail') == bad_request_response
