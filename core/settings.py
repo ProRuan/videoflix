@@ -193,3 +193,5 @@ REST_FRAMEWORK = {
         'rest_framework.filters.OrderingFilter',
     ]
 }
+
+VIDEO_NEW_DAYS = 90

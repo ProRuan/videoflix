@@ -69,13 +69,6 @@ def make_videos(db):
     return create_videos
 
 
-def _flatten_response(resp_json):
-    """
-    Flatten grouped response into a list of videos preserving order.
-    """
-    return [v for group in resp_json for v in group.get('videos', [])]
-
-
 @pytest.mark.django_db
 class TestVideoList:
     """
@@ -96,52 +89,45 @@ class TestVideoList:
         assert response.status_code == status.HTTP_200_OK
         assert response.json() == []
 
-    def test_list_sorted_by_date(self, auth_client, make_videos):
+    def test_new_group_first_and_sorted(self, auth_client, make_videos):
         """
-        Ensure videos are returned grouped by genre and that, within a
-        genre, videos are sorted by created_at (newest first).
-        """
-        today = date.today()
-        old = make_videos(count=1, created_at=today - timedelta(days=2))[0]
-        mid = make_videos(count=1, created_at=today - timedelta(days=1))[0]
-        new = make_videos(count=1, created_at=today)[0]
-
-        response = auth_client.get(self.url)
-        assert response.status_code == status.HTTP_200_OK
-
-        flattened = _flatten_response(response.json())
-        ids = [v['id'] for v in flattened]
-        assert ids == [new.id, mid.id, old.id]
-
-    def test_grouped_by_genre_and_sorted(self, auth_client, make_videos):
-        """
-        Ensure response is grouped by genre (alphabetical) and videos inside
-        each genre are sorted by created_at (newest first) and title (secondary).
+        The first element must be the "New on Videoflix" group and contain
+        recent videos (sorted by created_at desc).
+        Other genre groups follow alphabetically and contain their videos
+        sorted newest-first then title.
         """
         today = date.today()
-        # Action videos: two with different dates
+
+        # Action: one yesterday, one today (today is "new")
         a1 = make_videos(count=1, genre='Action',
                          created_at=today - timedelta(days=1))[0]
         a2 = make_videos(count=1, genre='Action', created_at=today)[0]
-        # Comedy single
+
+        # Comedy: old (outside default 14-day "new" window)
         c1 = make_videos(count=1, genre='Comedy',
-                         created_at=today - timedelta(days=2))[0]
+                         created_at=today - timedelta(days=20))[0]
 
         resp = auth_client.get(self.url)
         assert resp.status_code == status.HTTP_200_OK
         data = resp.json()
 
-        # genres should be alphabetically ordered: Action, Comedy
-        genres = [g['genre'] for g in data]
-        assert genres == ['Action', 'Comedy']
+        # first group is the New on Videoflix group and contains the newest video(s)
+        assert len(data) >= 3  # New + Action + Comedy (at least)
+        assert data[0]['genre'] == 'New on Videoflix'
+        new_videos = data[0]['videos']
+        assert any(v['id'] == a2.id for v in new_videos)
+        # newest-first inside the new group
+        assert new_videos[0]['id'] == a2.id
 
-        # videos in Action should be newest first
-        action_videos = next(g for g in data if g['genre'] == 'Action')[
-            'videos']
-        assert action_videos[0]['id'] == a2.id
-        assert action_videos[1]['id'] == a1.id
+        # remaining genres are alphabetical
+        rest_genres = [g['genre'] for g in data[1:]]
+        assert rest_genres == sorted(rest_genres)
 
-        # Comedy has the single video
-        comedy_videos = next(g for g in data if g['genre'] == 'Comedy')[
-            'videos']
-        assert comedy_videos[0]['id'] == c1.id
+        # Action group should contain both Action videos, newest-first
+        action_group = next(g for g in data if g['genre'] == 'Action')
+        assert action_group['videos'][0]['id'] == a2.id
+        assert action_group['videos'][1]['id'] == a1.id
+
+        # Comedy group has the old video
+        comedy_group = next(g for g in data if g['genre'] == 'Comedy')
+        assert comedy_group['videos'][0]['id'] == c1.id
