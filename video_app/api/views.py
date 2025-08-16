@@ -1,37 +1,43 @@
+# api/views.py
 # Third-party suppliers
-from django_filters.rest_framework import DjangoFilterBackend
+from itertools import groupby
+from operator import attrgetter
+
 from rest_framework import generics
-from rest_framework.filters import OrderingFilter
+from rest_framework.response import Response
 
 # Local imports
-from .filters import VideoFilter
 from .permissions import IsAuthenticatedReadOnly
-from .serializers import VideoDetailSerializer, VideoSerializer
+from .serializers import VideoSerializer, VideoDetailSerializer
 from video_app.models import Video
 
 
 class VideoListView(generics.ListAPIView):
     """
-    Represents a video list view for
-        - GET /api/videos/
-            - list videos
-            - filtered by genre
-            - sorted newest first
+    GET /api/videos/
+    Returns an array of genres sorted alphabetically. Each genre contains
+    a `videos` array sorted by created_at (newest first) then title (ascending).
     """
     queryset = Video.objects.all()
     serializer_class = VideoSerializer
     permission_classes = [IsAuthenticatedReadOnly]
 
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
-    filterset_class = VideoFilter
-    ordering_fields = ['created_at']
-    ordering = ['-created_at']
+    def list(self, request, *args, **kwargs):
+        # order by genre (for grouping), then created_at desc, then title asc
+        qs = self.get_queryset().order_by('genre', '-created_at', 'title')
+        grouped = []
+        for genre, items in groupby(qs, key=attrgetter('genre')):
+            vids = list(items)
+            serialized = VideoSerializer(
+                vids, many=True, context=self.get_serializer_context()
+            ).data
+            grouped.append({'genre': genre, 'videos': serialized})
+        return Response(grouped)
 
 
 class VideoDetailView(generics.RetrieveAPIView):
     """
-    Represents a video detail view.
-        - GET /api/videos/{pk}/ - retrieve a single video.
+    GET /api/videos/{pk}/ - retrieve a single video with full fields.
     """
     queryset = Video.objects.all()
     serializer_class = VideoDetailSerializer

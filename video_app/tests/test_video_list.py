@@ -1,3 +1,4 @@
+# tests/test_video_list.py
 # Standard libraries
 from datetime import date, timedelta
 
@@ -68,6 +69,13 @@ def make_videos(db):
     return create_videos
 
 
+def _flatten_response(resp_json):
+    """
+    Flatten grouped response into a list of videos preserving order.
+    """
+    return [v for group in resp_json for v in group.get('videos', [])]
+
+
 @pytest.mark.django_db
 class TestVideoList:
     """
@@ -90,38 +98,50 @@ class TestVideoList:
 
     def test_list_sorted_by_date(self, auth_client, make_videos):
         """
-        Ensure getting a video list sorted by created_at.
-        Newest videos are listed first.
+        Ensure videos are returned grouped by genre and that, within a
+        genre, videos are sorted by created_at (newest first).
         """
         today = date.today()
-        old, mid, new = (
-            *make_videos(count=1, created_at=today - timedelta(days=2)),
-            *make_videos(count=1, created_at=today - timedelta(days=1)),
-            *make_videos(count=1, created_at=today)
-        )
+        old = make_videos(count=1, created_at=today - timedelta(days=2))[0]
+        mid = make_videos(count=1, created_at=today - timedelta(days=1))[0]
+        new = make_videos(count=1, created_at=today)[0]
+
         response = auth_client.get(self.url)
-        ids = [v['id'] for v in response.json()]
+        assert response.status_code == status.HTTP_200_OK
+
+        flattened = _flatten_response(response.json())
+        ids = [v['id'] for v in flattened]
         assert ids == [new.id, mid.id, old.id]
 
-    def test_filter_genre(self, auth_client, make_videos):
+    def test_grouped_by_genre_and_sorted(self, auth_client, make_videos):
         """
-        Ensure videos are filtered by genre and case-insensitively.
-        """
-        make_videos(count=1, genre='Comedy')
-        action_videos = make_videos(count=2, genre='Action')
-        response = auth_client.get(self.url, {'genre': 'action'})
-        ids = {v['id'] for v in response.json()}
-        assert ids == {vid.id for vid in action_videos}
-
-    def test_filter_and_sort(self, auth_client, make_videos):
-        """
-        Ensure filtering and default sorting work together.
+        Ensure response is grouped by genre (alphabetical) and videos inside
+        each genre are sorted by created_at (newest first) and title (secondary).
         """
         today = date.today()
-        make_videos(
-            count=1, genre='Action',
-            created_at=today - timedelta(days=1)
-        )
-        latest = make_videos(count=1, genre='Action', created_at=today)[0]
-        response = auth_client.get(self.url, {'genre': 'Action'})
-        assert response.json()[0]['id'] == latest.id
+        # Action videos: two with different dates
+        a1 = make_videos(count=1, genre='Action',
+                         created_at=today - timedelta(days=1))[0]
+        a2 = make_videos(count=1, genre='Action', created_at=today)[0]
+        # Comedy single
+        c1 = make_videos(count=1, genre='Comedy',
+                         created_at=today - timedelta(days=2))[0]
+
+        resp = auth_client.get(self.url)
+        assert resp.status_code == status.HTTP_200_OK
+        data = resp.json()
+
+        # genres should be alphabetically ordered: Action, Comedy
+        genres = [g['genre'] for g in data]
+        assert genres == ['Action', 'Comedy']
+
+        # videos in Action should be newest first
+        action_videos = next(g for g in data if g['genre'] == 'Action')[
+            'videos']
+        assert action_videos[0]['id'] == a2.id
+        assert action_videos[1]['id'] == a1.id
+
+        # Comedy has the single video
+        comedy_videos = next(g for g in data if g['genre'] == 'Comedy')[
+            'videos']
+        assert comedy_videos[0]['id'] == c1.id
