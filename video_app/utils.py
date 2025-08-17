@@ -2,6 +2,9 @@
 import os
 import subprocess
 
+# ???
+from urllib.parse import urljoin
+
 # Third-party suppliers
 from django.conf import settings
 from django.core.files import File
@@ -136,3 +139,66 @@ def get_video_duration(path):
         return int(float(result.stdout.strip()))
     except Exception:
         return None
+
+
+def get_resolution_urls(video, request=None):
+    """
+    Given a Video instance, return a dict mapping resolution name ->
+    public playlist URL, e.g.
+      { "720p": "http://127.0.0.1:8000/media/videos/hls/<base>/720p/index.m3u8", ... }
+
+    Uses (in order):
+      1. request.build_absolute_uri(...) when `request` is provided (recommended).
+      2. settings.MEDIA_URL if it contains an absolute URL (starts with http/https).
+      3. falls back to a relative path using MEDIA_URL (may return "/media/..." or similar).
+
+    Returns empty dict if there is no hls_playlist or no available_resolutions.
+    """
+    # prefer the saved hls_playlist field to derive the base name
+    playlist_field = getattr(video, 'hls_playlist', None)
+    if not playlist_field:
+        # fallback to derive base from video_file if available
+        source = getattr(video, 'video_file', None)
+        if not source:
+            return {}
+        value = getattr(source, 'name', None)
+    else:
+        value = getattr(playlist_field, 'name', None)
+
+    if not value:
+        return {}
+
+    base = os.path.splitext(os.path.basename(value))[0]
+
+    # build the relative media path (always start with a slash if MEDIA_URL is '/media/')
+    media_url = settings.MEDIA_URL or '/'
+    # Ensure media_url ends with a slash for joining
+    if not media_url.endswith('/'):
+        media_url = media_url + '/'
+
+    mapping = {}
+    for name in getattr(video, 'available_resolutions', []) or []:
+        # Relative portion under MEDIA_URL
+        rel_under_media = f"videos/hls/{base}/{name}/index.m3u8"
+
+        # If a request exists, use it to build absolute URI from the relative path
+        if request is not None:
+            # Build absolute path relative to the site's root
+            # If MEDIA_URL is relative like '/media/', prefix it before building absolute.
+            if media_url.startswith('http://') or media_url.startswith('https://'):
+                # MEDIA_URL already absolute, join to it
+                mapping[name] = urljoin(media_url, rel_under_media)
+            else:
+                # ensure starting slash for build_absolute_uri
+                rel_path = media_url.rstrip('/') + '/' + rel_under_media
+                mapping[name] = request.build_absolute_uri(rel_path)
+            continue
+
+        # No request available: try to use MEDIA_URL if it's absolute
+        if media_url.startswith('http://') or media_url.startswith('https://'):
+            mapping[name] = urljoin(media_url, rel_under_media)
+        else:
+            # fallback: return a relative path (e.g. "/media/videos/...")
+            mapping[name] = urljoin(media_url, rel_under_media)
+
+    return mapping
