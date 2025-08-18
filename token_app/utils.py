@@ -11,7 +11,6 @@ from .models import (
 
 User = get_user_model()
 
-
 TOKEN_MAP = {
     "activation": AccountActivationToken,
     "deletion": AccountDeletionToken,
@@ -26,28 +25,27 @@ def _generate_token_hex(nbytes: int = 20) -> str:
 
 def create_token_for_user(user: get_user_model, token_type: str):
     """
-    Create or replace a token instance for user / token_type.
-    Returns the token model instance.
+    Remove any existing token for this user & token_type and create a fresh one.
+    Returns the new token model instance.
     """
     Model = TOKEN_MAP[token_type]
+    # remove existing token for that user (OneToOne semantics)
+    Model.objects.filter(user=user).delete()
     token_value = _generate_token_hex()
-    # replace existing or create new
-    obj, _ = Model.objects.update_or_create(
-        user=user,
-        defaults={"token": token_value, "created_at": timezone.now(),
-                  "used": False},
-    )
-    return obj
+    instance = Model.objects.create(token=token_value, user=user)
+    return instance
 
 
-def get_token_instance_by_value(token_value: str):
-    """Find token instance across token models (returns instance or None)."""
-    for Model in TOKEN_MAP.values():
-        try:
-            return Model.objects.get(token=token_value)
-        except Model.DoesNotExist:
-            continue
-    return None
+def get_token_and_type_by_value(token_value: str):
+    """
+    Find token instance across token models.
+    Returns (instance, type_str) or (None, None).
+    """
+    for type_str, Model in TOKEN_MAP.items():
+        inst = Model.objects.filter(token=token_value).first()
+        if inst:
+            return inst, type_str
+    return None, None
 
 
 def token_expired(instance) -> bool:
