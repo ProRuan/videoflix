@@ -1,4 +1,3 @@
-# tests/test_registration.py
 import pytest
 from django.contrib.auth import get_user_model
 from django.core import mail
@@ -39,7 +38,7 @@ class TestRegistrationEndpoint:
 
         assert response.status_code == 201
         content = response.json()
-        # token should be included in the response now
+        # token should be included in the response (activation token)
         assert 'token' in content
         assert content['email'] == data['email']
         assert isinstance(content['user_id'], int)
@@ -75,6 +74,7 @@ class TestRegistrationEndpoint:
         data['email'] = 'user4@example.com'
         response = client.post(self.endpoint, data, format='json')
         assert response.status_code == 201
+        # Email should be sent (use console backend in dev or check outbox in tests)
         assert len(mail.outbox) == 1
         assert data['email'] in mail.outbox[0].to
 

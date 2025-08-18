@@ -1,7 +1,7 @@
 # Third-party suppliers
 from django.contrib.auth import authenticate, get_user_model
 from rest_framework import serializers
-from rest_framework.authtoken.models import Token
+from rest_framework.authtoken.models import Token as AuthToken
 
 # Local imports
 from auth_app.utils import (
@@ -9,6 +9,10 @@ from auth_app.utils import (
     validate_email_unique,
     validate_passwords,
     validate_token_key,
+)
+from token_app.utils import (
+    get_token_and_type_by_value,
+    token_expired,
 )
 
 User = get_user_model()
@@ -53,35 +57,48 @@ class RegistrationSerializer(serializers.Serializer):
 class AccountActivationSerializer(serializers.Serializer):
     """
     Validates activation token and activates the user on save.
-    - token: required
-    - validate_token raises serializers.ValidationError('Token not found.') -> view maps to 404
-    - save() activates the user, deletes any existing tokens for that user (consumes
-      the activation token) and creates & returns a fresh auth token instance.
+
+    Validation rules:
+      - Token must exist in token_app and be type 'activation' -> otherwise raise
+        ValidationError('Token not found.') (view maps this to 404).
+      - Token must not be expired or already used -> raise ValidationError('Token expired.') or 'Token already used.'
+    save():
+      - activates the user
+      - marks the activation token as used (instance.used = True)
+      - deletes existing DRF auth tokens for that user and returns a fresh auth token instance
     """
     token = serializers.CharField()
 
     def validate_token(self, value):
-        try:
-            Token.objects.get(key=value)
-        except Token.DoesNotExist:
-            raise serializers.ValidationError('Token not found.')
+        inst, type_str = get_token_and_type_by_value(value)
+        if not inst or type_str != "activation":
+            raise serializers.ValidationError("Token not found.")
+        if token_expired(inst):
+            raise serializers.ValidationError("Token expired.")
+        if inst.used:
+            raise serializers.ValidationError("Token already used.")
+        # keep the token instance for save()
+        self.instance = inst
         return value
 
     def save(self):
-        token_key = self.validated_data['token']
-        # Get the token and the associated user
-        token_obj = Token.objects.get(key=token_key)
-        user = token_obj.user
+        token_instance = getattr(self, "instance", None)
+        if token_instance is None:
+            raise RuntimeError("Called save() without a validated token")
+
+        user = token_instance.user
 
         # Activate the user
         user.is_active = True
-        user.save()
+        user.save(update_fields=["is_active"])
 
-        # Delete any existing tokens for that user (consume activation/reset tokens)
-        Token.objects.filter(user=user).delete()
+        # Consume token: mark used (we keep DB record for audit)
+        token_instance.used = True
+        token_instance.save(update_fields=["used"])
 
-        # Create a fresh auth token and return it for immediate use
-        new_token = Token.objects.create(user=user)
+        # Remove any existing DRF auth tokens for that user and create a fresh one
+        AuthToken.objects.filter(user=user).delete()
+        new_token = AuthToken.objects.create(user=user)
         return new_token
 
 
@@ -107,20 +124,6 @@ class LoginSerializer(serializers.Serializer):
         return {'user': user}
 
 
-# class ForgotPasswordSerializer(serializers.Serializer):
-#     """
-#     Represents a forgot-password serializer.
-#     Provides methods to validate an email.
-#     """
-#     email = serializers.EmailField()
-
-#     def validate_email(self, value):
-#         """
-#         Validate an email for existence.
-#         """
-#         validate_email_exists(value)
-#         return value
-
 class ForgotPasswordSerializer(serializers.Serializer):
     """
     Represents a forgot-password serializer.
@@ -130,57 +133,24 @@ class ForgotPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
 
-# class ResetPasswordSerializer(serializers.Serializer):
-#     """
-#     Represents a reset-password serializer.
-#     Provides methods to validate token and passwords.
-#     Updates a user password by validated data.
-#     """
-#     token = serializers.CharField()
-#     password = serializers.CharField(write_only=True)
-#     repeated_password = serializers.CharField(write_only=True)
-
-#     def validate(self, data):
-#         """
-#         Validate passwords for validity and match.
-#         """
-#         validate_passwords(data['password'], data['repeated_password'])
-#         return data
-
-#     def validate_token(self, value):
-#         """
-#         Validate a token for existence.
-#         """
-#         validate_token_key(value)
-#         return value
-
-#     def save(self):
-#         """
-#         Update a user password.
-#         """
-#         token_key = self.validated_data['token']
-#         password = self.validated_data['password']
-#         token = Token.objects.get(key=token_key)
-#         user = token.user
-#         user.set_password(password)
-#         user.save()
-#         return token
-
-
 class ResetPasswordSerializer(serializers.Serializer):
     """
     Accepts:
       - token: the reset token provided in the reset link
       - email: the email resolved from token (frontend sends it)
       - password, repeated_password: new password pair
+
     Validation:
       - email must exist -> raises "User not found." (we map that to 404 in the view)
-      - token must exist and match the email -> serializer raises ValidationError (mapped to 400)
-      - password rules & match -> ValidationError (mapped to 400)
+      - token must exist in token_app and be type 'password_reset' -> raise ValidationError('Token not found or invalid.')
+      - token.user.email must match provided email -> ValidationError('Token does not match provided email.')
+      - password rules & match -> ValidationError
+
     save():
       - updates user's password
-      - deletes any existing Token(s) for the user (consumes reset token)
-      - creates and returns a fresh auth Token instance
+      - consumes the reset token (marks used)
+      - deletes any existing DRF auth Token(s) for the user
+      - creates and returns a fresh DRF auth Token instance
     """
     token = serializers.CharField()
     email = serializers.EmailField()
@@ -197,49 +167,51 @@ class ResetPasswordSerializer(serializers.Serializer):
         # Validate passwords (strength and match)
         validate_passwords(data['password'], data['repeated_password'])
 
-        # Verify token existence
+        # Verify token existence and type
         token_key = data.get('token')
-        try:
-            token = Token.objects.get(key=token_key)
-        except Token.DoesNotExist:
+        inst, type_str = get_token_and_type_by_value(token_key)
+        if not inst or type_str != "password_reset":
             raise serializers.ValidationError('Token not found or invalid.')
 
+        # Check expiry and used state
+        if token_expired(inst):
+            raise serializers.ValidationError('Token expired.')
+        if inst.used:
+            raise serializers.ValidationError('Token already used.')
+
         # Verify token maps to same user email
-        user = token.user
+        user = inst.user
         if user.email != data.get('email'):
-            # Token does not belong to the provided email
             raise serializers.ValidationError(
                 'Token does not match provided email.')
 
-        # Everything OK
+        # Save instance for use in save()
+        self.instance = inst
         return data
 
     def save(self):
+        token_instance = getattr(self, "instance", None)
+        if token_instance is None:
+            raise RuntimeError("Called save() without validated token")
+
         email = self.validated_data['email']
         password = self.validated_data['password']
 
         user = User.objects.get(email=email)
         user.set_password(password)
-        user.save()
+        user.save(update_fields=["password"])
 
-        # Remove any existing tokens for user (consume/reset the reset token)
-        Token.objects.filter(user=user).delete()
+        # Consume token and remove old DRF auth tokens
+        token_instance.used = True
+        token_instance.save(update_fields=["used"])
 
-        # Create a fresh auth token for immediate use and return it
-        new_token = Token.objects.create(user=user)
+        AuthToken.objects.filter(user=user).delete()
+        new_token = AuthToken.objects.create(user=user)
         return new_token
 
 
 class EmailCheckSerializer(serializers.Serializer):
     """
-    Represents a forgot-password serializer.
-    Provides methods to validate an email.
+    Represents an email existence check (for registration).
     """
     email = serializers.EmailField()
-
-    # def validate_email(self, value):
-    #     """
-    #     Validate an email for existence.
-    #     """
-    #     validate_email_exists(value)
-    #     return value
