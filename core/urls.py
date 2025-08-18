@@ -26,6 +26,7 @@ urlpatterns = [
     path('api-auth/', include('rest_framework.urls')),
     path('django-rq/', include('django_rq.urls')),
     path('api/', include('auth_app.api.urls')),
+    path('api/token/', include('token_app.api.urls')),
     path('api/videos/', include('video_app.api.urls')),
     path('api/video-progress/', include('video_progress_app.api.urls')),
 ]
