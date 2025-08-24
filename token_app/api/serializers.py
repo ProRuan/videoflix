@@ -28,4 +28,5 @@ class TokenCheckResponseSerializer(serializers.Serializer):
     token = serializers.CharField()
     type = serializers.CharField()
     user = serializers.IntegerField()
+    email = serializers.CharField()
     used = serializers.BooleanField()

@@ -89,6 +89,45 @@ class AccountActivationView(APIView):
             status=status.HTTP_200_OK
         )
 
+# rename to AccountReactivationView
+
+
+class ReactivateAccountView(APIView):
+    """
+    POST /api/account-reactivation/
+    Request: { email }
+    Success: 200
+      - If email exists: { token, email, user_id } (token is activation token)
+      - If email doesn't exist: { "status": "ok" } (no disclosure)
+    Errors:
+      - 400 Bad Request when email missing/invalid (serializer)
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        # Return field-level errors so tests can assert on 'email'
+        serializer.is_valid()
+        if serializer.errors:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        email = serializer.validated_data['email']
+        user = User.objects.filter(email=email).first()
+        if user:
+            # Create activation token and send activation / reactivation email
+            token_instance = create_token_for_user(user, "activation")
+            raw = token_instance.token
+            activation_link = f"https://your-frontend.com/confirm-email?token={raw}"
+            send_confirm_email_email(user, activation_link)
+
+            return Response(
+                {"token": raw, "email": user.email, "user_id": user.id},
+                status=status.HTTP_200_OK
+            )
+
+        # Generic success for non-existing emails
+        return Response({"status": "ok"}, status=status.HTTP_200_OK)
+
 
 class LoginView(APIView):
     """
@@ -114,41 +153,41 @@ class LoginView(APIView):
 
 class ForgotPasswordView(APIView):
     """
-    Represents a forgot-password view.
-        - POST triggers a reset-password email.
+    POST /api/forgot-password/
+    Request: { email }
+    Success: 200
+      - If email exists: { token, email, user_id } (token is password reset token)
+      - If email doesn't exist: { "status": "ok" } (no disclosure)
+    Errors:
+      - 400 Bad Request when email missing/invalid (serializer)
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
-        """
-        Post user email.
-        Returns 200 with {email, user_id} when email exists,
-        404 if email not found, 400 for serializer errors.
-        """
         serializer = ForgotPasswordSerializer(data=request.data)
-        error = validate_serializer_or_400(serializer)
-        if error:
-            return error
+        # Return field-level errors so tests can assert on 'email'
+        serializer.is_valid()
+        if serializer.errors:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         email = serializer.validated_data['email']
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
+
+        # Try to find user but do NOT reveal non-existence
+        user = User.objects.filter(email=email).first()
+        if user:
+            # Create a password reset token and send the email
+            token_instance = create_token_for_user(user, "password_reset")
+            raw = token_instance.token
+            reset_link = f"https://your-frontend.com/reset-password?token={raw}"
+            send_reset_password_email(user, reset_link)
+
             return Response(
-                {"email": ["Email not found."]},
-                status=status.HTTP_404_NOT_FOUND
+                {"token": raw, "email": user.email, "user_id": user.id},
+                status=status.HTTP_200_OK
             )
 
-        # Create a password reset token (token_app) and send it via email
-        token_instance = create_token_for_user(user, "password_reset")
-        raw = token_instance.token
-        reset_link = f"https://your-frontend.com/reset-password?token={raw}"
-        send_reset_password_email(user, reset_link)
-
-        return Response(
-            {"email": user.email, "user_id": user.id},
-            status=status.HTTP_200_OK
-        )
+        # Generic success for non-existing emails (prevent enumeration)
+        return Response({"status": "ok"}, status=status.HTTP_200_OK)
 
 
 class ResetPasswordView(APIView):

@@ -8,18 +8,19 @@ User = get_user_model()
 
 
 @pytest.mark.django_db
-class TestForgotPasswordEndpoint:
-    endpoint = reverse('forgot-password')
+class TestAccountReactivationEndpoint:
+    endpoint = reverse('account-reactivation')
 
     def setup_method(self):
         self.user = User.objects.create_user(
-            email='user@example.com',
-            password='StrongP@ss1'
+            email='reactivate@example.com',
+            password='StrongP@ss1',
+            is_active=False  # typical initial state prior to activation/reactivation
         )
 
-    def test_forgot_password_success(self):
+    def test_account_reactivation_success(self):
         client = APIClient()
-        data = {'email': 'user@example.com'}
+        data = {'email': 'reactivate@example.com'}
         response = client.post(self.endpoint, data, format='json')
 
         assert response.status_code == 200
@@ -33,12 +34,12 @@ class TestForgotPasswordEndpoint:
         assert len(mail.outbox) == 1
         assert self.user.email in mail.outbox[0].to
 
-    def test_forgot_password_email_not_found_returns_generic_success(self):
+    def test_account_reactivation_email_not_found_returns_generic_success(self):
         client = APIClient()
-        data = {'email': 'missing@example.com'}
+        data = {'email': 'missing-reactivate@example.com'}
         response = client.post(self.endpoint, data, format='json')
 
-        # Security-safe behaviour: do NOT reveal existence -> return 200 with {"status":"ok"}
+        # Security-safe behaviour: return 200 with {"status":"ok"} when email not found
         assert response.status_code == 200
         body = response.json()
         assert body.get('status') == 'ok'
@@ -50,11 +51,10 @@ class TestForgotPasswordEndpoint:
         ({}, 'email'),  # missing email
         ({'email': 'not-an-email'}, 'email'),  # invalid email format
     ])
-    def test_forgot_password_invalid_request(self, payload, expected_field):
+    def test_account_reactivation_invalid_request(self, payload, expected_field):
         client = APIClient()
         response = client.post(self.endpoint, payload, format='json')
 
         assert response.status_code == 400
         body = response.json()
-        # Serializer returns field-level errors; ensure 'email' is present in the error body
         assert expected_field in body

@@ -105,6 +105,6 @@ class TokenCheckView(APIView):
             return Response({"detail": "token already used."}, status=status.HTTP_400_BAD_REQUEST)
 
         payload = {"token": instance.token, "type": type_str,
-                   "user": instance.user.pk, "used": instance.used}
+                   "user": instance.user.pk, "email": instance.user.email, "used": instance.used}
         out = TokenCheckResponseSerializer(payload)
         return Response(out.data, status=status.HTTP_200_OK)
