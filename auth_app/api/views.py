@@ -9,15 +9,20 @@ from rest_framework.views import APIView
 # Local imports
 from .serializers import (
     AccountActivationSerializer,
+    AccountDeletionSerializer,
+    DeregistrationSerializer,
     ForgotPasswordSerializer,
     LoginSerializer,
+    LogoutSerializer,
     RegistrationSerializer,
     ResetPasswordSerializer,
     EmailCheckSerializer,
+    UserEmailSerializer,
 )
 from auth_app.utils import (
     build_auth_response,
     send_confirm_email_email,
+    send_deregistration_email,
     send_reset_password_email,
     validate_serializer_or_400,
 )
@@ -131,24 +136,50 @@ class ReactivateAccountView(APIView):
 
 class LoginView(APIView):
     """
-    Represents a login view.
-        - POST authenticates a user.
+    POST authenticates a user and refreshes a DRF auth token (delete old -> create new).
+    Response: { token, email, user_id } on success (200)
     """
     permission_classes = [AllowAny]
 
     def post(self, request):
-        """
-        Post user login data.
-        Returns token, email and user_id.
-        """
         serializer = LoginSerializer(data=request.data)
         error = validate_serializer_or_400(serializer)
         if error:
             return error
+
         user = serializer.validated_data['user']
-        view_payload, view_status = build_auth_response(
-            user, status.HTTP_200_OK)
-        return Response(view_payload, status=view_status)
+
+        # Remove any existing DRF tokens and create a fresh one (refresh)
+        AuthToken.objects.filter(user=user).delete()
+        new_token = AuthToken.objects.create(user=user)
+
+        return Response(
+            {'token': new_token.key, 'email': user.email, 'user_id': user.id},
+            status=status.HTTP_200_OK
+        )
+
+
+class LogoutView(APIView):
+    """
+    POST /api/logout/
+    Request: { token, email, user_id }
+    Success: 204 No Content (token deleted)
+    Errors:
+      - 400 Bad Request for other validation errors
+      - 404 Not Found when token or user not found
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = LogoutSerializer(data=request.data)
+        serializer.is_valid()
+        if serializer.errors:
+            joined = " ".join(str(v) for v in serializer.errors.values())
+            if 'Token not found' in joined:
+                return Response(serializer.errors, status=status.HTTP_404_NOT_FOUND)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ForgotPasswordView(APIView):
@@ -245,3 +276,89 @@ class EmailCheckView(APIView):
 
         # Email not found -> success
         return Response({"status": "ok"}, status=status.HTTP_200_OK)
+
+
+class DeregistrationView(APIView):
+    """
+    POST /api/deregistration/
+    Request: { email, password } -> authenticates the user and sends a deletion email with a 'deletion' token.
+    Success: 200 { token, email, user_id } (when user exists)
+             200 {"status":"ok"} (when email not found; prevents enumeration)
+    Errors: 400 for invalid payload/credentials, 404 when email not found (if you prefer explicit 404)
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = DeregistrationSerializer(data=request.data)
+        serializer.is_valid()
+        if serializer.errors:
+            email_errors = serializer.errors.get('email', [])
+            if any('User not found' in str(e) for e in email_errors):
+                return Response(serializer.errors, status=status.HTTP_404_NOT_FOUND)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # {"token": raw, "email": ..., "user_id": ...}
+        created = serializer.save()
+        raw_token = created['token']
+        user_email = created['email']
+        user_id = created['user_id']
+
+        # Build deletion confirmation link and send e-mail
+        deletion_link = f"https://your-frontend.com/deactivate-account?token={raw_token}"
+        user = User.objects.get(email=user_email)
+        send_deregistration_email(user, deletion_link)
+
+        return Response(
+            {"token": raw_token, "email": user_email, "user_id": user_id},
+            status=status.HTTP_200_OK
+        )
+
+
+class AccountDeletionView(APIView):
+    """
+    POST /api/account-deletion/
+    Request: { token }
+    Success: 204 No Content (user hard-deleted)
+    Errors:
+      - 400 Bad Request for missing/invalid token
+      - 404 Not Found when token not found
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = AccountDeletionSerializer(data=request.data)
+        serializer.is_valid()
+        if serializer.errors:
+            token_errors = serializer.errors.get('token', [])
+            if any('Token not found' in str(e) for e in token_errors):
+                return Response(serializer.errors, status=status.HTTP_404_NOT_FOUND)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # This will hard-delete the user
+        serializer.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class UserEmailView(APIView):
+    """
+    POST /api/user-email/
+    Request: { token }
+    Success: 200 { email }
+    Errors:
+      - 400 Bad Request for missing/invalid payload
+      - 404 Not Found when token not found
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = UserEmailSerializer(data=request.data)
+        # run validation to populate serializer.errors
+        serializer.is_valid()
+        if serializer.errors:
+            token_errors = serializer.errors.get('token', [])
+            if any('Token not found' in str(e) for e in token_errors):
+                return Response(serializer.errors, status=status.HTTP_404_NOT_FOUND)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        result = serializer.save()
+        return Response({"email": result["email"]}, status=status.HTTP_200_OK)

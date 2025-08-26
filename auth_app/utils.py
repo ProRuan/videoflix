@@ -132,3 +132,32 @@ def send_reset_password_email(user, reset_link):
         },
         to_email=user.email,
     )
+
+
+# update data!!!
+def send_deregistration_email(user, deletion_link):
+    """
+    Renders the confirm-email template and sends it as an HTML email.
+    """
+    send_templated_email(
+        subject="Confirm account deletion",
+        template_name="auth_app/confirm-account-deletion.html",
+        context={
+            "user": user,
+            "email": user.email,
+            "deletion_link": deletion_link,
+        },
+        to_email=user.email,
+    )
+
+# def send_deregistration_email(user, deletion_link):
+#     context = {
+#         "user": user,
+#         "email": user.email,
+#         "deletion_link": deletion_link,
+#     }
+#     subject = "Confirm account deletion"
+#     html_body = render_to_string("auth_app/confirm-deregistration.html", context)
+#     msg = EmailMessage(subject=subject, body=html_body, to=[user.email])
+#     msg.content_subtype = "html"
+#     msg.send()

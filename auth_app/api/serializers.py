@@ -11,6 +11,7 @@ from auth_app.utils import (
     validate_token_key,
 )
 from token_app.utils import (
+    create_token_for_user,
     get_token_and_type_by_value,
     token_expired,
 )
@@ -124,6 +125,22 @@ class LoginSerializer(serializers.Serializer):
         return {'user': user}
 
 
+class LogoutSerializer(serializers.Serializer):
+    token = serializers.CharField()
+
+    def validate_token(self, value):
+        inst = AuthToken.objects.filter(key=value).first()
+        if not inst:
+            raise serializers.ValidationError("Token not found.")
+        self.token_instance = inst
+        return value
+
+    def save(self):
+        # delete the provided token (logout from that session)
+        self.token_instance.delete()
+        return None
+
+
 class ForgotPasswordSerializer(serializers.Serializer):
     """
     Represents a forgot-password serializer.
@@ -215,3 +232,109 @@ class EmailCheckSerializer(serializers.Serializer):
     Represents an email existence check (for registration).
     """
     email = serializers.EmailField()
+
+
+class DeregistrationSerializer(serializers.Serializer):
+    """
+    Validates email + password for a deregistration request.
+    On save() it creates a single-use account_deletion token and returns the raw token.
+    Validation rules:
+      - email: must exist -> raise ValidationError('User not found.') (view maps this to 404)
+      - password: validated by authenticate(); if invalid -> ValidationError('Invalid credentials.')
+    """
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+
+    def validate_email(self, value):
+        # Explicit user existence check -> view will map to 404
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError('User not found.')
+        return value
+
+    def validate(self, data):
+        user = authenticate(email=data['email'], password=data['password'])
+        if not user:
+            raise serializers.ValidationError('Invalid credentials.')
+        # store the user for save()
+        self.user = user
+        return data
+
+    def save(self):
+        # Create deletion token and return raw token string
+        token_inst = create_token_for_user(self.user, "deletion")
+        raw = token_inst.token
+        return {"token": raw, "email": self.user.email, "user_id": self.user.id}
+
+
+class AccountDeletionSerializer(serializers.Serializer):
+    """
+    Accepts { token } to perform the actual account deletion (hard-delete).
+    Validation rules:
+      - token must exist and be of type 'deletion' -> ValidationError('Token not found.')
+      - token must not be expired -> ValidationError('Token expired.')
+      - token must not be used -> ValidationError('Token already used.')
+    save():
+      - marks token used (for audit) then deletes the User (hard delete)
+      - removes any DRF auth tokens
+    """
+    token = serializers.CharField()
+
+    def validate_token(self, value):
+        inst, type_str = get_token_and_type_by_value(value)
+        if not inst or type_str != "deletion":
+            raise serializers.ValidationError("Token not found.")
+        if token_expired(inst):
+            raise serializers.ValidationError("Token expired.")
+        if inst.used:
+            raise serializers.ValidationError("Token already used.")
+        # keep token instance for save()
+        self.instance = inst
+        return value
+
+    def save(self):
+        token_instance = getattr(self, "instance", None)
+        if token_instance is None:
+            raise RuntimeError("Called save() without a validated token")
+
+        user = token_instance.user
+
+        # Mark token used for audit before deletion
+        token_instance.used = True
+        token_instance.save(update_fields=["used"])
+
+        # Remove any existing DRF auth tokens for that user
+        AuthToken.objects.filter(user=user).delete()
+
+        # Optionally record some audit info here before deletion
+
+        # Finally hard-delete the user (this cascades or runs model delete hooks)
+        user.delete()
+
+        # Nothing to return for deletion
+        return None
+
+
+class UserEmailSerializer(serializers.Serializer):
+    """
+    Accepts { token } and returns { email } on success.
+
+    Validation:
+      - token must exist as a DRF AuthToken -> ValidationError('Token not found.')
+    save():
+      - returns dict {'email': user.email}
+    """
+    token = serializers.CharField()
+
+    def validate_token(self, value):
+        inst = AuthToken.objects.filter(key=value).first()
+        if not inst:
+            raise serializers.ValidationError("Token not found.")
+        # keep the user for save()
+        self.user = inst.user
+        return value
+
+    def save(self):
+        user = getattr(self, "user", None)
+        if user is None:
+            raise RuntimeError("Called save() without a validated token")
+        return {"email": user.email}
