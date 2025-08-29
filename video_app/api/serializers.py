@@ -13,7 +13,7 @@ class VideoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Video
         fields = [
-            'id', 'title', 'genre', 'preview_clip',
+            'id', 'title', 'genre', 'description', 'preview_clip',
             'thumbnail_image', 'sprite_sheet', 'created_at',
         ]
         read_only_fields = [
