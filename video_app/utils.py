@@ -101,13 +101,54 @@ def get_hls_paths(video):
     return source, base, root
 
 
+# def finalize_hls(video, base, root, entries, names):
+#     """
+#     Write master playlist, save file, and update the video record.
+#     """
+#     master = os.path.join(root, f"{base}.m3u8")
+#     write_master_playlist(master, entries)
+#     save_file(video, 'hls_playlist', master, f"{base}.m3u8")
+#     video.available_resolutions = list(names)
+#     video.save(update_fields=['hls_playlist', 'available_resolutions'])
+
 def finalize_hls(video, base, root, entries, names):
     """
     Write master playlist, save file, and update the video record.
+
+    Important:
+    - Write the master to disk (root/<base>.m3u8).
+    - Save it via the model's FileField using a name *relative* to the field.upload_to
+      so Django doesn't duplicate the upload_to path.
+    - Keep playlist entries relative (e.g. "720p/index.m3u8") so they resolve correctly.
     """
     master = os.path.join(root, f"{base}.m3u8")
-    write_master_playlist(master, entries)
-    save_file(video, 'hls_playlist', master, f"{base}.m3u8")
+
+    # Ensure entries contain only relative URIs like "720p/index.m3u8"
+    # (build_hls_entry already produces that, but normalize defensively)
+    normalized_entries = []
+    for e in entries:
+        uri = e.get('uri', '')
+        # if someone accidentally wrote an absolute/incorrect URI, reduce to "<name>/index.m3u8"
+        # attempt to extract the last two path components (resolution/index.m3u8)
+        parts = uri.replace('\\', '/').split('/')
+        if len(parts) >= 2:
+            uri = '/'.join(parts[-2:])
+        normalized_entries.append({
+            'uri': uri,
+            'bandwidth': e['bandwidth'],
+            'resolution': e['resolution'],
+        })
+
+    write_master_playlist(master, normalized_entries)
+
+    # Save the master into the FileField. Pass a filename *relative* to the field.upload_to
+    # so Django's FieldFile.generate_filename doesn't prepend upload_to twice.
+    # Using "<base>/<base>.m3u8" places the master next to the "<base>/" subfolders.
+    name_for_field = os.path.join(base, f"{base}.m3u8")
+
+    save_file(video, 'hls_playlist', master, name_for_field)
+
+    # update available_resolutions and persist
     video.available_resolutions = list(names)
     video.save(update_fields=['hls_playlist', 'available_resolutions'])
 
