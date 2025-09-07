@@ -1,59 +1,69 @@
-import secrets
+# Standard libraries
+import re
 from datetime import timedelta
+from typing import Optional, Tuple
+
+# Third-party suppliers
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 
-from .models import (
-    AccountActivationToken,
-    AccountDeletionToken,
-    PasswordResetToken,
-)
-
-User = get_user_model()
-
-TOKEN_MAP = {
-    "activation": AccountActivationToken,
-    "deletion": AccountDeletionToken,
-    "password_reset": PasswordResetToken,
-}
+# Local imports
+from token_app.models import Token
 
 
-def _generate_token_hex(nbytes: int = 20) -> str:
-    """Return a hex token string (default 40 hex chars)."""
-    return secrets.token_hex(nbytes)
+HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
-def create_token_for_user(user: get_user_model, token_type: str):
-    """
-    Remove any existing token for this user & token_type and create a fresh one.
-    Returns the new token model instance.
-    """
-    Model = TOKEN_MAP[token_type]
-    # remove existing token for that user (OneToOne semantics)
-    Model.objects.filter(user=user).delete()
-    token_value = _generate_token_hex()
-    instance = Model.objects.create(token=token_value, user=user)
-    return instance
+def token_lifetime_delta(token_type: str) -> timedelta:
+    """Return lifetime delta based on token type."""
+    if token_type == Token.TYPE_AUTH:
+        return timedelta(hours=12)
+    if token_type in (Token.TYPE_ACTIVATION, Token.TYPE_DELETION):
+        return timedelta(hours=24)
+    if token_type == Token.TYPE_RESET:
+        return timedelta(hours=1)
+    return timedelta(hours=1)
 
 
-def get_token_and_type_by_value(token_value: str):
-    """
-    Find token instance across token models.
-    Returns (instance, type_str) or (None, None).
-    """
-    for type_str, Model in TOKEN_MAP.items():
-        inst = Model.objects.filter(token=token_value).first()
-        if inst:
-            return inst, type_str
-    return None, None
+def generate_token_value() -> str:
+    """Create a 64-char hex string (Knox-compatible length)."""
+    from secrets import token_hex
+    return token_hex(32)
 
 
-def token_expired(instance) -> bool:
-    """Return True if the token instance is expired."""
-    expires_at = instance.created_at + instance.lifetime
-    return timezone.now() > expires_at
+def upsert_token(user_id: int, token_type: str) -> Token:
+    """Delete active same-type tokens, then create a fresh one."""
+    now = timezone.now()
+    Token.objects.filter(user_id=user_id, type=token_type, used=False,
+                         expired_at__gt=now).delete()
+    value = generate_token_value()
+    exp = now + token_lifetime_delta(token_type)
+    return Token.objects.create(user_id=user_id, type=token_type,
+                                value=value, expired_at=exp)
 
 
-def token_expiry_datetime(instance):
-    """Return the datetime when the token will expire."""
-    return instance.created_at + instance.lifetime
+def fetch_token(value: str) -> Optional[Token]:
+    """Return token by value or None."""
+    try:
+        return Token.objects.select_related("user").get(value=value)
+    except Token.DoesNotExist:
+        return None
+
+
+def classify_token_status(tok: Optional[Token]) -> Tuple[str, Optional[str]]:
+    """Classify token status and return (status, message)."""
+    if tok is None:
+        return "not_found", "Token not found."
+    if not HEX64_RE.match(tok.value):
+        return "invalid", "Invalid token pattern."
+    if tok.used:
+        return "used", "Token already used."
+    if tok.expired_at <= timezone.now():
+        return "expired", "Token expired."
+    return "valid", None
+
+
+def mark_token_used(tok: Token) -> None:
+    """Mark token as used."""
+    tok.used = True
+    tok.save(update_fields=["used"])

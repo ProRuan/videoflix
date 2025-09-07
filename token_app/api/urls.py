@@ -1,7 +1,13 @@
+# Standard libraries
+
+# Third-party suppliers
 from django.urls import path
-from .views import TokenCreationView, TokenCheckView
+
+# Local imports
+from token_app.api.views import TokenCheckView
+
+app_name = "token_app"
 
 urlpatterns = [
-    path("creation/", TokenCreationView.as_view(), name="token-creation"),
-    path("check/", TokenCheckView.as_view(), name="token-check"),
+    path("check/", TokenCheckView.as_view(), name="check"),
 ]

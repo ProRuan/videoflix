@@ -49,7 +49,8 @@ class TestResetPasswordEndpoint:
 
         returned_token_key = content['token']
         # returned token should be a DRF auth token for the user
-        assert AuthToken.objects.filter(key=returned_token_key, user=self.user).exists()
+        assert AuthToken.objects.filter(
+            key=returned_token_key, user=self.user).exists()
 
         # reset token must be marked used
         self.reset_inst.refresh_from_db()

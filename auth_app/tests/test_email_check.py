@@ -1,43 +1,42 @@
+# Third-party suppliers
 import pytest
-from rest_framework import status
+from django.urls import reverse
 from rest_framework.test import APIClient
 
-
-@pytest.fixture
-def api_client():
-    return APIClient()
-
-
-@pytest.fixture
-def user(db, django_user_model):
-    return django_user_model.objects.create(
-        email="existing@example.com",
-        password="testpassword123"
-    )
+# Local imports
+from auth_app.tests.utils.factories import make_user
 
 
 @pytest.mark.django_db
-class TestEmailCheckEndpoint:
-    url = '/api/email-check/'
+def test_email_check_success_existing_email_returns_true():
+    user = make_user("john.doe@mail.com")
+    url = reverse("auth_app:email-check")
+    res = APIClient().post(url, {"email": user.email}, format="json")
+    assert res.status_code == 200
+    assert res.data["email"] == user.email
+    assert res.data["exists"] is True
 
-    def test_email_check_email_exists(self, api_client, user):
-        data = {'email': user.email}
-        response = api_client.post(self.url, data, format='json')
-        assert response.status_code == status.HTTP_404_NOT_FOUND
-        assert 'email' in response.data or 'detail' in response.data
 
-    def test_email_check_email_available(self, api_client):
-        data = {'email': 'newuser@example.com'}
-        response = api_client.post(self.url, data, format='json')
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data.get('status') == 'ok'
+@pytest.mark.django_db
+def test_email_check_success_non_existing_email_returns_false():
+    url = reverse("auth_app:email-check")
+    res = APIClient().post(url, {"email": "no.user@mail.com"}, format="json")
+    assert res.status_code == 200
+    assert res.data["email"] == "no.user@mail.com"
+    assert res.data["exists"] is False
 
-    @pytest.mark.parametrize("payload, expected_errors", [
-        ({}, ['email']),
-        ({'email': 'not-an-email'}, ['email']),
-    ])
-    def test_email_check_invalid_request(self, api_client, payload, expected_errors):
-        response = api_client.post(self.url, payload, format='json')
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        for field in expected_errors:
-            assert field in response.data
+
+@pytest.mark.django_db
+def test_email_check_missing_email_returns_400():
+    url = reverse("auth_app:email-check")
+    res = APIClient().post(url, {}, format="json")
+    assert res.status_code == 400
+    assert "detail" in res.data
+
+
+@pytest.mark.django_db
+def test_email_check_invalid_email_returns_400():
+    url = reverse("auth_app:email-check")
+    res = APIClient().post(url, {"email": "invalid@@mail..com"}, format="json")
+    assert res.status_code == 400
+    assert "Enter a valid email address." in res.data["detail"]

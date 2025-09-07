@@ -1,163 +1,88 @@
-# Third-party suppliers
+# Standard libraries
 import re
-from django.contrib.auth import get_user_model
+from typing import Optional
+
+# Third-party suppliers
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
-from rest_framework import serializers, status
-from rest_framework.authtoken.models import Token
-from rest_framework.response import Response
+from django.urls import reverse
 
-User = get_user_model()
+# Local imports
 
-PASSWORD_PATTERN = re.compile(
-    r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s]).{8,}$'
+
+EMAIL_RE = re.compile(
+    r"^[A-ZÀ-Ÿa-zà-ÿß0-9._%+-]+@[A-ZÀ-Ÿa-zà-ÿß0-9.-]+\.[A-ZÀ-Ÿa-ÿß]{2,}$"
+)
+PWD_RE = re.compile(
+    r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)"
+    r"(?=.*[^\w\s]).{8,}$"
 )
 
 
-def validate_passwords(password: str, repeated_password: str) -> None:
-    """
-    Validate passwords for validity and match.
-    A password has at least
-        - 8 chars
-        - 1 uppercase,
-        - 1 lowercase,
-        - 1 digit,
-        - 1 special char.
-    """
-    from rest_framework import serializers
-
-    if password != repeated_password:
-        raise serializers.ValidationError(
-            'Please check your data and try it again.'
-        )
-    if not PASSWORD_PATTERN.match(password):
-        raise serializers.ValidationError(
-            'Please check your data and try it again.'
-        )
+def is_valid_email(email: str) -> bool:
+    """Return True if email matches the project pattern."""
+    return bool(EMAIL_RE.match(email or ""))
 
 
-def validate_email_unique(value: str) -> None:
-    """
-    Validate an email for uniqueness.
-    That means no existing user has this email.
-    """
-    if User.objects.filter(email=value).exists():
-        raise serializers.ValidationError(
-            'Please check your data and try it again.'
-        )
+def is_strong_password(password: str) -> bool:
+    """Return True if password meets strength requirements."""
+    return bool(PWD_RE.match(password or ""))
 
 
-def validate_email_exists(value: str) -> None:
-    """
-    Validate an email for existence.
-    """
-    if not User.objects.filter(email=value).exists():
-        raise serializers.ValidationError(
-            'Please check your data and try it again.'
-        )
+def build_activation_link(token_value: Optional[str]) -> str:
+    token = token_value or ""
+    return f"http://localhost:4200/activate-account/{token}"
 
 
-def validate_token_key(token_key: str) -> None:
-    """
-    Validate a provided auth token for existence.
-    """
-    from rest_framework.authtoken.models import Token as _T
-    if not Token.objects.filter(key=token_key).exists():
-        raise serializers.ValidationError(
-            'Please check your data and try it again.'
-        )
-
-
-def validate_serializer_or_400(serializer):
-    """
-    Validate a serializer.
-    Returns status code 400 on failure, otherwise none.
-    """
-    if not serializer.is_valid():
-        return Response(
-            {'detail': 'Please check your data and try it again.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    return None
-
-
-def build_auth_response(user, status_code):
-    """
-    Returns (payload, status_code) for a user’s auth token.
-    """
-    token, provided = Token.objects.get_or_create(user=user)
-    return (
-        {'token': token.key, 'email': user.email, 'user_id': user.id},
-        status_code
+def send_activation_email(email: str, first_name: str, token: Optional[str]) -> None:
+    """Render and send the activation email (HTML + plaintext)."""
+    ctx = {"first_name": first_name or "",
+           "link": build_activation_link(token)}
+    html = render_to_string("auth_app/account-activation-email.html", ctx)
+    msg = EmailMultiAlternatives(
+        subject="Confirm your email • Videoflix",
+        body="Please open this email in an HTML-capable client.",
+        to=[email],
     )
+    msg.attach_alternative(html, "text/html")
+    msg.send()
 
 
-def send_templated_email(
-    subject: str, template_name: str, context: dict,
-    to_email: str, from_email: str = 'info@Videoflix.com'
-) -> None:
-    """
-    Renders the given template with context and sends it as an HTML email.
-    """
-    html_body = render_to_string(template_name, context)
-    msg = EmailMultiAlternatives(subject, "", from_email, [to_email])
-    msg.attach_alternative(html_body, "text/html")
-    msg.send(fail_silently=True)
+def build_password_reset_link(token_value: Optional[str]) -> str:
+    token = token_value or ""
+    return f"http://localhost:4200/reset-password/{token}"
 
 
-def send_confirm_email_email(user, activation_link):
-    """
-    Renders the confirm-email template and sends it as an HTML email.
-    """
-    send_templated_email(
-        subject="Confirm your email",
-        template_name="auth_app/confirm-email.html",
-        context={
-            "email": user.email,
-            "activation_link": activation_link,
-        },
-        to_email=user.email,
+def send_password_reset_email(email: str, first_name: str,
+                              token: Optional[str]) -> None:
+    ctx = {"first_name": first_name or "",
+           "link": build_password_reset_link(token)}
+    html = render_to_string("auth_app/password-reset-email.html", ctx)
+    msg = EmailMultiAlternatives(
+        subject="Reset your password • Videoflix",
+        body="Please open this email in an HTML-capable client.",
+        to=[email],
     )
+    msg.attach_alternative(html, "text/html")
+    msg.send()
 
 
-def send_reset_password_email(user, reset_link):
-    """
-    Renders the reset-password template and sends it as an HTML email.
-    """
-    send_templated_email(
-        subject="Reset your password",
-        template_name="auth_app/reset-password.html",
-        context={
-                "reset_link": reset_link,
-        },
-        to_email=user.email,
+def build_account_deletion_link(token_value: Optional[str]) -> str:
+    """Build frontend deletion URL including the raw token."""
+    token = token_value or ""
+    return f"http://localhost:4200/delete-account/{token}"
+
+
+def send_account_deletion_email(email: str, first_name: str,
+                                token: Optional[str]) -> None:
+    """Render and send the account deletion email (HTML)."""
+    ctx = {"first_name": first_name or "",
+           "link": build_account_deletion_link(token)}
+    html = render_to_string("auth_app/account-deletion-email.html", ctx)
+    msg = EmailMultiAlternatives(
+        subject="Confirm account deletion • Videoflix",
+        body="Please open this email in an HTML-capable client.",
+        to=[email],
     )
-
-
-# update data!!!
-def send_deregistration_email(user, deletion_link):
-    """
-    Renders the confirm-email template and sends it as an HTML email.
-    """
-    send_templated_email(
-        subject="Confirm account deletion",
-        template_name="auth_app/confirm-account-deletion.html",
-        context={
-            "user": user,
-            "email": user.email,
-            "deletion_link": deletion_link,
-        },
-        to_email=user.email,
-    )
-
-# def send_deregistration_email(user, deletion_link):
-#     context = {
-#         "user": user,
-#         "email": user.email,
-#         "deletion_link": deletion_link,
-#     }
-#     subject = "Confirm account deletion"
-#     html_body = render_to_string("auth_app/confirm-deregistration.html", context)
-#     msg = EmailMessage(subject=subject, body=html_body, to=[user.email])
-#     msg.content_subtype = "html"
-#     msg.send()
+    msg.attach_alternative(html, "text/html")
+    msg.send()

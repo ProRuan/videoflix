@@ -1,35 +1,39 @@
+# Standard libraries
+
 # Third-party suppliers
 from django.urls import path
 
 # Local imports
-from .views import (
+from auth_app.api.views import (
     AccountActivationView,
     AccountDeletionView,
+    AccountReactivationView,
     DeregistrationView,
-    ForgotPasswordView,
+    EmailCheckView,
     LoginView,
     LogoutView,
-    ReactivateAccountView,
-    RegistrationView,
-    ResetPasswordView,
-    EmailCheckView,
-    UserEmailView,
+    PasswordResetRequestView,
+    PasswordUpdateView,
+    RegistrationView
 )
 
+app_name = "auth_app"
+
 urlpatterns = [
-    path('registration/', RegistrationView.as_view(), name='registration'),
-    path('account-activation/', AccountActivationView.as_view(),
-         name='account-activation'),
-    path('account-reactivation/', ReactivateAccountView.as_view(),
-         name='account-reactivation'),
-    path('login/', LoginView.as_view(), name='login'),
-    path('logout/', LogoutView.as_view(), name='logout'),
-    path('forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),
-    path('reset-password/', ResetPasswordView.as_view(), name='reset-password'),
-    path('email-check/', EmailCheckView.as_view(), name='email-check'),
-    path('deregistration/', DeregistrationView.as_view(), name='deregistration'),
-    path('account-deletion/', AccountDeletionView.as_view(),
-         name='account-deletion'),
-    path('user-email/', UserEmailView.as_view(), name='user-email'),
+    path("registration/", RegistrationView.as_view(), name="registration"),
+    path("account-activation/", AccountActivationView.as_view(),
+         name="account-activation"),
+    path("account-reactivation/", AccountReactivationView.as_view(),
+         name="account-reactivation"),
+    path("email-check/", EmailCheckView.as_view(), name="email-check"),
+    path("login/", LoginView.as_view(), name="login"),
+    path("logout/", LogoutView.as_view(), name="logout"),
+    path("password-reset/", PasswordResetRequestView.as_view(),
+         name="password-reset"),
+    path("password-update/", PasswordUpdateView.as_view(),
+         name="password-update"),
+    path("deregistration/", DeregistrationView.as_view(), name="deregistration"),
+    path("account-deletion/", AccountDeletionView.as_view(),
+         name="account-deletion"),
 
 ]

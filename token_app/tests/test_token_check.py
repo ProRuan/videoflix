@@ -1,64 +1,79 @@
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
+# Standard libraries
+
+# Third-party suppliers
+import pytest
 from django.urls import reverse
-from django.utils import timezone
-from datetime import timedelta
+from rest_framework.test import APIClient
 
-from token_app.utils import create_token_for_user
+# Local imports
+from token_app.models import Token
+from token_app.tests.utils.factories import make_token, make_user
 
-User = get_user_model()
+
+@pytest.mark.django_db
+def test_token_check_success_returns_200():
+    user = make_user("john.doe@mail.com")
+    tok = make_token(user, Token.TYPE_ACTIVATION, hours_delta=24)
+    res = APIClient().post(reverse("token_app:check"),
+                           {"token": tok.value}, format="json")
+    assert res.status_code == 200
+    assert res.data["token"] == tok.value
+    assert res.data["email"] == user.email
+    assert res.data["user_id"] == user.id
 
 
-class TokenCheckTests(TestCase):
-    def setUp(self):
-        self.client = APIClient()
-        self.user = User.objects.create_user(
-            username="sue", email="sue@example.com", password="pw"
-        )
-        self.create_url = reverse("token-creation")
-        self.check_url = reverse("token-check")
+@pytest.mark.django_db
+def test_token_check_missing_token_returns_400():
+    res = APIClient().post(reverse("token_app:check"), {}, format="json")
+    assert res.status_code == 400
+    assert "This field is required." in res.data["detail"]
 
-    def test_check_token_success(self):
-        inst = create_token_for_user(self.user, "password_reset")
-        resp = self.client.post(
-            self.check_url, {"token": inst.token}, format="json")
-        self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertEqual(data["token"], inst.token)
-        self.assertEqual(data["user"], self.user.pk)
-        self.assertFalse(data["used"])
-        self.assertEqual(data["type"], "password_reset")
 
-    def test_set_used_true(self):
-        inst = create_token_for_user(self.user, "password_reset")
-        resp = self.client.post(
-            self.check_url, {"token": inst.token, "used": True}, format="json")
-        self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertTrue(data["used"])
-        # confirm DB updated
-        inst.refresh_from_db()
-        self.assertTrue(inst.used)
+@pytest.mark.django_db
+def test_token_check_invalid_pattern_returns_400():
+    user = make_user("john.doe@mail.com")
+    _ = make_token(user, Token.TYPE_RESET, hours_delta=1)
+    bad = "z" * 64
+    res = APIClient().post(reverse("token_app:check"),
+                           {"token": bad}, format="json")
+    assert res.status_code == 400
+    assert "Invalid token pattern" in res.data["detail"]
 
-    def test_check_token_not_found(self):
-        resp = self.client.post(
-            self.check_url, {"token": "nonexistent"}, format="json")
-        self.assertEqual(resp.status_code, 404)
 
-    def test_check_token_expired_returns_400(self):
-        inst = create_token_for_user(self.user, "password_reset")
-        # force created_at far in the past
-        inst.created_at = timezone.now() - (inst.lifetime + timedelta(seconds=10))
-        inst.save(update_fields=["created_at"])
-        resp = self.client.post(
-            self.check_url, {"token": inst.token}, format="json")
-        self.assertEqual(resp.status_code, 400)
+@pytest.mark.django_db
+def test_token_check_expired_returns_400():
+    user = make_user("john.doe@mail.com")
+    tok = make_token(user, Token.TYPE_RESET, hours_delta=-1)
+    res = APIClient().post(reverse("token_app:check"),
+                           {"token": tok.value}, format="json")
+    assert res.status_code == 400
+    assert "expired" in res.data["detail"].lower()
 
-    def test_check_already_used_returns_400(self):
-        inst = create_token_for_user(self.user, "password_reset")
-        inst.used = True
-        inst.save(update_fields=["used"])
-        resp = self.client.post(
-            self.check_url, {"token": inst.token}, format="json")
-        self.assertEqual(resp.status_code, 400)
+
+@pytest.mark.django_db
+def test_token_check_used_returns_400():
+    user = make_user("john.doe@mail.com")
+    tok = make_token(user, Token.TYPE_DELETION, hours_delta=24, used=True)
+    res = APIClient().post(reverse("token_app:check"),
+                           {"token": tok.value}, format="json")
+    assert res.status_code == 400
+    assert "used" in res.data["detail"].lower()
+
+
+@pytest.mark.django_db
+def test_token_check_non_existing_token_returns_404():
+    res = APIClient().post(reverse("token_app:check"),
+                           {"token": "a" * 64}, format="json")
+    assert res.status_code == 404
+    assert "Token not found" in res.data["detail"]
+
+
+@pytest.mark.django_db
+def test_token_check_user_deleted_returns_404():
+    user = make_user("john.doe@mail.com")
+    tok = make_token(user, Token.TYPE_AUTH, hours_delta=12)
+    user.delete()
+    res = APIClient().post(reverse("token_app:check"),
+                           {"token": tok.value}, format="json")
+    assert res.status_code == 404
+    assert "Token not found" in res.data["detail"]

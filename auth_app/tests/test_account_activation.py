@@ -1,63 +1,57 @@
+# Standard libraries
+
+# Third-party suppliers
 import pytest
-from django.contrib.auth import get_user_model
 from django.urls import reverse
-from rest_framework.authtoken.models import Token as AuthToken
 from rest_framework.test import APIClient
 
-from token_app.utils import create_token_for_user
-from token_app.models import AccountActivationToken
-
-User = get_user_model()
+# Local imports
+from token_app.models import Token
+from token_app.tests.utils.factories import make_token, make_user
 
 
 @pytest.mark.django_db
-class TestAccountActivationEndpoint:
-    activation_endpoint = reverse('account-activation')
+def test_account_activation_success_returns_200_marks_used_and_activates():
+    user = make_user("john.doe@mail.com")
+    user.is_active = False
+    user.save(update_fields=["is_active"])
+    tok = make_token(user, Token.TYPE_ACTIVATION, hours_delta=24, used=False)
 
-    def setup_method(self):
-        # create inactive user and activation token
-        self.user = User.objects.create_user(
-            email='pending@example.com',
-            password='StrongP@ss1',
-            is_active=False
-        )
-        # create_token_for_user returns the token model instance
-        self.activation_inst = create_token_for_user(self.user, "activation")
+    url = reverse("auth_app:account-activation")
+    res = APIClient().post(url, {"token": tok.value}, format="json")
 
-    def test_activation_success(self):
-        client = APIClient()
-        response = client.post(self.activation_endpoint, {
-                               'token': self.activation_inst.token}, format='json')
-        assert response.status_code == 200
-        body = response.json()
-        assert body.get('email') == self.user.email
-        assert body.get('user_id') == self.user.id
-        assert 'token' in body
+    assert res.status_code == 200
+    assert res.data["email"] == user.email
+    assert res.data["user_id"] == user.id
+    # Refresh and verify changes
+    tok.refresh_from_db()
+    user.refresh_from_db()
+    assert tok.used is True
+    assert user.is_active is True
 
-        returned_token_key = body.get('token')
-        # returned token is a DRF auth token and should exist
-        assert AuthToken.objects.filter(
-            key=returned_token_key, user=self.user).exists()
 
-        # user should be active
-        self.user.refresh_from_db()
-        assert self.user.is_active is True
+@pytest.mark.django_db
+def test_account_activation_missing_token_returns_400():
+    url = reverse("auth_app:account-activation")
+    res = APIClient().post(url, {}, format="json")
+    assert res.status_code == 400
+    assert "This field is required." in res.data["detail"]
 
-        # activation token should be marked used (not necessarily deleted)
-        self.activation_inst.refresh_from_db()
-        assert self.activation_inst.used is True
 
-    def test_activation_missing_token(self):
-        client = APIClient()
-        response = client.post(self.activation_endpoint, {}, format='json')
-        assert response.status_code == 400
-        body = response.json()
-        assert 'token' in body
+@pytest.mark.django_db
+def test_account_activation_invalid_token_returns_400():
+    user = make_user("john.doe@mail.com")
+    _ = make_token(user, Token.TYPE_ACTIVATION, hours_delta=24)
+    bad = "z" * 64  # not hex
+    url = reverse("auth_app:account-activation")
+    res = APIClient().post(url, {"token": bad}, format="json")
+    assert res.status_code == 400
+    assert "Invalid token" in res.data["detail"]
 
-    def test_activation_invalid_token(self):
-        client = APIClient()
-        response = client.post(self.activation_endpoint, {
-                               'token': 'does-not-exist'}, format='json')
-        assert response.status_code == 404
-        body = response.json()
-        assert 'token' in body
+
+@pytest.mark.django_db
+def test_account_activation_non_existing_token_returns_404():
+    url = reverse("auth_app:account-activation")
+    res = APIClient().post(url, {"token": "a" * 64}, format="json")
+    assert res.status_code == 404
+    assert "Token not found" in res.data["detail"]
