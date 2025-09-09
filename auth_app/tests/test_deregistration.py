@@ -1,110 +1,104 @@
 # Standard libraries
-import re
 
 # Third-party suppliers
 import pytest
 from django.core import mail
 from django.urls import reverse
 from rest_framework.test import APIClient
+from knox.models import AuthToken
 
 # Local imports
 from auth_app.tests.utils.factories import make_user
-from token_app.models import Token
-from token_app.tests.utils.factories import make_token
+from auth_app.utils import create_knox_token
 
-HEX64 = re.compile(r"[0-9a-f]{64}")
+BAD = {"detail": ["Please check your input and try again."]}
 
 
 @pytest.mark.django_db
-def test_deregistration_success_sends_deletion_email_and_token():
-    user = make_user("john.doe@mail.com")
-    auth_tok = make_token(user, Token.TYPE_AUTH, hours_delta=12)
+def test_deregistration_success():
+    user = make_user(email="john.doe@mail.com",
+                     password="Test123!", is_active=True)
+    token = create_knox_token(user, hours=24)
     url = reverse("auth_app:deregistration")
-    res = APIClient().post(url, {
-        "token": auth_tok.value,
-        "email": user.email,
-        "password": "Test123!",
-    }, format="json")
+    payload = {"token": token, "email": "john.doe@mail.com",
+               "password": "Test123!"}
+
+    res = APIClient().post(url, payload, format="json")
 
     assert res.status_code == 200
-    assert res.data["email"] == user.email
-    assert res.data["user_id"] == user.id
-
-    # new deletion token exists and is unique per rules
-    qs = Token.objects.filter(user=user, type=Token.TYPE_DELETION)
-    assert qs.count() == 1
-    # email sent with 64-hex token in link
+    assert res.json() == {"email": "john.doe@mail.com"}
+    # a new token for deletion email has been created
+    assert AuthToken.objects.filter(user=user).count() == 2
+    # email sent and link contains delete-account path
     assert len(mail.outbox) == 1
-    html = mail.outbox[0].alternatives[0][0]
-    assert "http://localhost:4200/delete-account/" in html
-    assert HEX64.search(html)
+    assert "Confirm account deletion" in mail.outbox[0].subject
+    assert "delete-account" in mail.outbox[0].alternatives[0][0]
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},  # all missing
+        {"token": ""},  # blank token
+        {"token": "bad token", "email": "john.doe@mail.com", "password": "x"},
+        {"token": "A"*64, "email": "", "password": "Test123!"},
+        {"token": "A"*64, "email": "john", "password": "Test123!"},
+        {"token": "A"*64, "email": "john.doe@mail.com", "password": ""},  # blank pw
+        # token valid but email doesn't match token's user
+    ],
+)
 @pytest.mark.django_db
-def test_deregistration_missing_token_returns_400():
-    user = make_user("john.doe@mail.com")
+def test_deregistration_bad_requests(payload):
+    user = make_user(email="john.doe@mail.com",
+                     password="Test123!", is_active=True)
+    create_knox_token(user, hours=24)
     url = reverse("auth_app:deregistration")
-    res = APIClient().post(url, {
-        "email": user.email, "password": "Test123!",
-    }, format="json")
+
+    res = APIClient().post(url, payload, format="json")
     assert res.status_code == 400
-    assert "This field is required." in res.data["detail"]
+    assert res.json() == BAD
 
 
 @pytest.mark.django_db
-def test_deregistration_invalid_token_pattern_returns_400():
-    user = make_user("john.doe@mail.com")
-    _ = make_token(user, Token.TYPE_AUTH, hours_delta=12)
+def test_deregistration_email_mismatch_or_wrong_password():
+    user = make_user(email="john.doe@mail.com",
+                     password="Test123!", is_active=True)
+    token = create_knox_token(user, hours=24)
     url = reverse("auth_app:deregistration")
-    res = APIClient().post(url, {
-        "token": "z"*64, "email": user.email, "password": "Test123!",
+
+    # email doesn't match the token's user
+    res1 = APIClient().post(url, {
+        "token": token, "email": "other@mail.com", "password": "Test123!"
     }, format="json")
-    assert res.status_code == 400
-    assert "Invalid token" in res.data["detail"]
+    assert res1.status_code == 400
+    assert res1.json() == BAD
+
+    # wrong password
+    res2 = APIClient().post(url, {
+        "token": token, "email": "john.doe@mail.com", "password": "Wrong123!"
+    }, format="json")
+    assert res2.status_code == 400
+    assert res2.json() == BAD
 
 
 @pytest.mark.django_db
-def test_deregistration_token_not_found_returns_404():
-    user = make_user("john.doe@mail.com")
+def test_deregistration_token_not_found():
+    make_user(email="john.doe@mail.com", password="Test123!", is_active=True)
     url = reverse("auth_app:deregistration")
-    res = APIClient().post(url, {
-        "token": "a"*64, "email": user.email, "password": "Test123!",
-    }, format="json")
+    payload = {"token": "A"*64,
+               "email": "john.doe@mail.com", "password": "Test123!"}
+    res = APIClient().post(url, payload, format="json")
     assert res.status_code == 404
-    assert "Token not found" in res.data["detail"]
 
 
 @pytest.mark.django_db
-def test_deregistration_invalid_email_returns_400():
-    user = make_user("john.doe@mail.com")
-    tok = make_token(user, Token.TYPE_AUTH, hours_delta=12)
+def test_deregistration_expired_token_returns_400():
+    user = make_user(email="john.doe@mail.com",
+                     password="Test123!", is_active=True)
+    token = create_knox_token(user, hours=-1)  # expired already
     url = reverse("auth_app:deregistration")
-    res = APIClient().post(url, {
-        "token": tok.value, "email": "john..doe@@mail", "password": "Test123!",
-    }, format="json")
+    payload = {"token": token, "email": "john.doe@mail.com",
+               "password": "Test123!"}
+    res = APIClient().post(url, payload, format="json")
     assert res.status_code == 400
-    assert "Enter a valid email address." in res.data["detail"]
-
-
-@pytest.mark.django_db
-def test_deregistration_email_not_matching_token_user_returns_400():
-    user = make_user("john.doe@mail.com")
-    tok = make_token(user, Token.TYPE_AUTH, hours_delta=12)
-    url = reverse("auth_app:deregistration")
-    res = APIClient().post(url, {
-        "token": tok.value, "email": "other@mail.com", "password": "Test123!",
-    }, format="json")
-    assert res.status_code == 400
-    assert "Invalid email" in res.data["detail"]
-
-
-@pytest.mark.django_db
-def test_deregistration_invalid_password_returns_400():
-    user = make_user("john.doe@mail.com")
-    tok = make_token(user, Token.TYPE_AUTH, hours_delta=12)
-    url = reverse("auth_app:deregistration")
-    res = APIClient().post(url, {
-        "token": tok.value, "email": user.email, "password": "Wrong123!",
-    }, format="json")
-    assert res.status_code == 400
-    assert "Invalid data" in res.data["detail"]
+    assert res.json() == BAD

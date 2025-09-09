@@ -1,56 +1,58 @@
 # Standard libraries
-import re
 
 # Third-party suppliers
 import pytest
 from django.core import mail
 from django.urls import reverse
 from rest_framework.test import APIClient
+from knox.models import AuthToken
 
 # Local imports
 from auth_app.tests.utils.factories import make_user
-from token_app.models import Token
-
-HEX64 = re.compile(r"[0-9a-f]{64}")
 
 
 @pytest.mark.django_db
-def test_password_reset_success_sends_email_and_token():
-    user = make_user("john.doe@mail.com")
-    url = reverse("auth_app:password-reset")
-    res = APIClient().post(url, {"email": user.email}, format="json")
+def test_password_reset_success_existing_email():
+    user = make_user(email="john.doe@mail.com", is_active=True)
+    url = reverse("auth_app:password_reset")
+    res = APIClient().post(url, {"email": "john.doe@mail.com"}, format="json")
 
     assert res.status_code == 200
-    assert res.data["email"] == user.email
-    # token exists and is reset type
-    qs = Token.objects.filter(user=user, type=Token.TYPE_RESET)
-    assert qs.count() == 1
-    # email content includes link with 64-hex token
+    assert res.json() == {"email": "john.doe@mail.com"}
+    # Email sent and 1-hour token created
     assert len(mail.outbox) == 1
-    html = mail.outbox[0].alternatives[0][0]
-    assert "http://localhost:4200/reset-password/" in html
-    assert HEX64.search(html)
+    assert "Reset your password" in mail.outbox[0].subject
+    assert "reset-password" in mail.outbox[0].alternatives[0][0]
+    assert AuthToken.objects.filter(user=user).count() == 1
 
 
 @pytest.mark.django_db
-def test_password_reset_missing_email_returns_400():
-    url = reverse("auth_app:password-reset")
-    res = APIClient().post(url, {}, format="json")
+def test_password_reset_success_non_existing_email():
+    url = reverse("auth_app:password_reset")
+    res = APIClient().post(url, {"email": "nobody@mail.com"}, format="json")
+
+    assert res.status_code == 200
+    assert res.json() == {"email": "nobody@mail.com"}
+    # No email sent, no token created
+    assert len(mail.outbox) == 0
+    assert AuthToken.objects.count() == 0
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},  # missing
+        {"email": ""},  # blank
+        {"email": "john"},  # invalid
+        {"email": "john.doe@mail"},  # invalid
+        {"email": "john.doe@mail.c"},  # invalid
+    ],
+)
+@pytest.mark.django_db
+def test_password_reset_invalid_or_missing_email(payload):
+    url = reverse("auth_app:password_reset")
+    res = APIClient().post(url, payload, format="json")
     assert res.status_code == 400
-    assert "detail" in res.data
-
-
-@pytest.mark.django_db
-def test_password_reset_invalid_email_returns_400():
-    url = reverse("auth_app:password-reset")
-    res = APIClient().post(url, {"email": "invalid@@mail"}, format="json")
-    assert res.status_code == 400
-    assert "Enter a valid email address." in res.data["detail"]
-
-
-@pytest.mark.django_db
-def test_password_reset_user_not_found_returns_404():
-    url = reverse("auth_app:password-reset")
-    res = APIClient().post(url, {"email": "no.user@mail.com"}, format="json")
-    assert res.status_code == 404
-    assert "User not found" in res.data["detail"]
+    assert res.json() == {
+        "detail": ["Please check your email and try again."]
+    }

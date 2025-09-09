@@ -2,79 +2,95 @@
 
 # Third-party suppliers
 import pytest
-from django.contrib.auth import get_user_model
 from django.core import mail
 from django.urls import reverse
 from rest_framework.test import APIClient
+from knox.models import AuthToken
 
 # Local imports
 from auth_app.tests.utils.factories import make_user
 
 
 @pytest.mark.django_db
-def test_registration_success_returns_201_and_sends_email():
-    client = APIClient()
+def test_registration_success():
     url = reverse("auth_app:registration")
-    payload = {
-        "email": "john.doe@mail.com",
-        "password": "Test123!",
-        "repeated_password": "Test123!",
-    }
-    res = client.post(url, payload, format="json")
+    payload = {"email": "john.doe@mail.com",
+               "password": "Test123!",
+               "repeated_password": "Test123!"}
+    res = APIClient().post(url, data=payload, format="json")
+
     assert res.status_code == 201
-    assert res.data["email"] == "john.doe@mail.com"
-    assert "user_id" in res.data
+    body = res.json()
+    assert body["email"] == "john.doe@mail.com"
+    assert body["is_active"] is False
+    assert body["user_id"] > 0
+
     assert len(mail.outbox) == 1
-    assert "Confirm your email" in mail.outbox[0].subject
+    assert "Activate your Videoflix" in mail.outbox[0].subject
+    # Greeting defaults to 'there' since we no longer extract first name
+    assert "there" in mail.outbox[0].alternatives[0][0]
+    assert "activate-account" in mail.outbox[0].alternatives[0][0]
+
+    assert AuthToken.objects.count() == 1
 
 
+@pytest.mark.parametrize("good", ["john.doe@mail.com", "j@m.eu"])
 @pytest.mark.django_db
-def test_registration_fails_on_missing_email():
-    client = APIClient()
+def test_registration_email_good(good):
     url = reverse("auth_app:registration")
-    res = client.post(url, {"password": "Test123!",
-                      "repeated_password": "Test123!"})
+    data = {"email": good, "password": "Test123!",
+            "repeated_password": "Test123!"}
+    res = APIClient().post(url, data=data, format="json")
+    assert res.status_code == 201
+
+
+@pytest.mark.parametrize(
+    "email,err",
+    [
+        ("", {"email": ["This field may not be blank."]}),
+        ("john", {"email": ["Enter a valid email address."]}),
+        ("john.doe@mail", {"email": ["Enter a valid email address."]}),
+        ("john.doe@mail.c", {"email": ["Enter a valid email address."]}),
+    ],
+)
+@pytest.mark.django_db
+def test_registration_email_bad(email, err):
+    url = reverse("auth_app:registration")
+    data = {"email": email, "password": "Test123!",
+            "repeated_password": "Test123!"}
+    res = APIClient().post(url, data=data, format="json")
     assert res.status_code == 400
+    assert res.json() == err
 
 
 @pytest.mark.django_db
-def test_registration_fails_on_invalid_email():
-    client = APIClient()
+def test_registration_email_exists():
+    make_user(email="john.doe@mail.com")
     url = reverse("auth_app:registration")
-    bad = "john.doe@@mail..com"
-    res = client.post(url, {"email": bad, "password": "Test123!",
-                            "repeated_password": "Test123!"})
+    data = {"email": "john.doe@mail.com", "password": "Test123!",
+            "repeated_password": "Test123!"}
+    res = APIClient().post(url, data=data, format="json")
     assert res.status_code == 400
+    assert res.json() == {"email": ["Email already exists."]}
 
 
+@pytest.mark.parametrize(
+    "pw,err",
+    [
+        ("", {"password": ["This field may not be blank."]}),
+        ("Testabc+", {"password": ["Not allowed special character."]}),
+        ("Test", {"password": ["Use at least 8 characters."]}),
+        ("test123!", {"password": ["Use at least one uppercase character."]}),
+        ("TEST123!", {"password": ["Use at least one lowercase character."]}),
+        ("Testabc!", {"password": ["Use at least one digit."]}),
+        ("Test1234", {"password": ["Use at least one special character."]}),
+    ],
+)
 @pytest.mark.django_db
-def test_registration_fails_on_existing_email():
-    make_user("john.doe@mail.com")
-    client = APIClient()
+def test_registration_password_bad(pw, err):
     url = reverse("auth_app:registration")
-    res = client.post(url, {"email": "john.doe@mail.com",
-                            "password": "Test123!",
-                            "repeated_password": "Test123!"})
+    data = {"email": "john.doe@mail.com", "password": pw,
+            "repeated_password": pw}
+    res = APIClient().post(url, data=data, format="json")
     assert res.status_code == 400
-
-
-@pytest.mark.django_db
-def test_registration_fails_on_missing_or_weak_passwords():
-    client = APIClient()
-    url = reverse("auth_app:registration")
-    # Missing repeated_password
-    res1 = client.post(url, {"email": "a@mail.com", "password": "Test123!"})
-    assert res1.status_code == 400
-    # Weak password
-    res2 = client.post(url, {"email": "b@mail.com", "password": "test1234",
-                             "repeated_password": "test1234"})
-    assert res2.status_code == 400
-
-
-@pytest.mark.django_db
-def test_registration_fails_on_password_mismatch():
-    client = APIClient()
-    url = reverse("auth_app:registration")
-    res = client.post(url, {"email": "a@mail.com", "password": "Test123!",
-                            "repeated_password": "Test123!!"})
-    assert res.status_code == 400
+    assert res.json() == err

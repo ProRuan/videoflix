@@ -4,7 +4,6 @@
 import pytest
 from django.urls import reverse
 from rest_framework.test import APIClient
-from knox.models import AuthToken
 
 # Local imports
 from auth_app.tests.utils.factories import make_user
@@ -12,22 +11,23 @@ from auth_app.utils import create_knox_token
 
 
 @pytest.mark.django_db
-def test_logout_success():
+def test_token_check_success():
     user = make_user(email="john.doe@mail.com", is_active=True)
     token = create_knox_token(user, hours=12)
-    url = reverse("auth_app:logout")
+    url = reverse("auth_app:token_check")
 
     client = APIClient()
     client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
     res = client.post(url, data={}, format="json")
 
     assert res.status_code == 200
-    assert res.json() == {"message": ["Logout successful."]}
-    assert AuthToken.objects.count() == 0
+    assert res.json() == {
+        "token": token, "email": "john.doe@mail.com", "user_id": user.id
+    }
 
 
 @pytest.mark.django_db
-def test_logout_unauthorized():
-    url = reverse("auth_app:logout")
+def test_token_check_unauthorized():
+    url = reverse("auth_app:token_check")
     res = APIClient().post(url, data={}, format="json")
     assert res.status_code == 401

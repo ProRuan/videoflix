@@ -5,47 +5,52 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework.test import APIClient
+from knox.models import AuthToken
 
 # Local imports
-from token_app.models import Token
-from token_app.tests.utils.factories import make_token, make_user
+from auth_app.tests.utils.factories import make_user
+from auth_app.utils import create_knox_token
+
+User = get_user_model()
 
 
 @pytest.mark.django_db
-def test_account_deletion_success_deletes_user_and_returns_204():
-    user = make_user("john.doe@mail.com")
-    tok = make_token(user, Token.TYPE_DELETION, hours_delta=24, used=False)
-    url = reverse("auth_app:account-deletion")
-    res = APIClient().post(url, {"token": tok.value}, format="json")
+def test_account_deletion_success():
+    user = make_user(email="john.doe@mail.com", password="Test123!",
+                     is_active=True)
+    token = create_knox_token(user, hours=24)
+    url = reverse("auth_app:account_deletion")
+    res = APIClient().post(url, {"token": token}, format="json")
 
     assert res.status_code == 204
-    User = get_user_model()
-    assert not User.objects.filter(id=user.id).exists()
-    # token should be gone via FK cascade
-    assert not Token.objects.filter(value=tok.value).exists()
+    assert not User.objects.filter(pk=user.pk).exists()
+    assert AuthToken.objects.count() == 0
 
 
+@pytest.mark.parametrize("payload", [{}, {"token": "bad token"}])
 @pytest.mark.django_db
-def test_account_deletion_missing_token_returns_400():
-    url = reverse("auth_app:account-deletion")
-    res = APIClient().post(url, {}, format="json")
+def test_account_deletion_bad_requests(payload):
+    user = make_user(email="john.doe@mail.com", password="Test123!",
+                     is_active=True)
+    create_knox_token(user, hours=24)
+    url = reverse("auth_app:account_deletion")
+    res = APIClient().post(url, payload, format="json")
     assert res.status_code == 400
-    assert "This field is required." in res.data["detail"]
 
 
 @pytest.mark.django_db
-def test_account_deletion_invalid_token_pattern_returns_400():
-    user = make_user("john.doe@mail.com")
-    _ = make_token(user, Token.TYPE_DELETION, hours_delta=24)
-    url = reverse("auth_app:account-deletion")
-    res = APIClient().post(url, {"token": "z"*64}, format="json")
-    assert res.status_code == 400
-    assert "Invalid token" in res.data["detail"]
-
-
-@pytest.mark.django_db
-def test_account_deletion_non_existing_token_returns_404():
-    url = reverse("auth_app:account-deletion")
-    res = APIClient().post(url, {"token": "a"*64}, format="json")
+def test_account_deletion_token_not_found():
+    make_user(email="john.doe@mail.com", password="Test123!", is_active=True)
+    url = reverse("auth_app:account_deletion")
+    res = APIClient().post(url, {"token": "A"*64}, format="json")
     assert res.status_code == 404
-    assert "Token not found" in res.data["detail"]
+
+
+@pytest.mark.django_db
+def test_account_deletion_expired_token_returns_400():
+    user = make_user(email="john.doe@mail.com", password="Test123!",
+                     is_active=True)
+    token = create_knox_token(user, hours=-1)  # already expired
+    url = reverse("auth_app:account_deletion")
+    res = APIClient().post(url, {"token": token}, format="json")
+    assert res.status_code == 400

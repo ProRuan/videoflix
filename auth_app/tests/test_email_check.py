@@ -1,3 +1,5 @@
+# Standard libraries
+
 # Third-party suppliers
 import pytest
 from django.urls import reverse
@@ -8,35 +10,43 @@ from auth_app.tests.utils.factories import make_user
 
 
 @pytest.mark.django_db
-def test_email_check_success_existing_email_returns_true():
-    user = make_user("john.doe@mail.com")
-    url = reverse("auth_app:email-check")
-    res = APIClient().post(url, {"email": user.email}, format="json")
+def test_email_check_success():
+    url = reverse("auth_app:email_check")
+    res = APIClient().post(
+        url, {"email": "john.doe@mail.com"}, format="json"
+    )
     assert res.status_code == 200
-    assert res.data["email"] == user.email
-    assert res.data["exists"] is True
+    assert res.json() == {"email": "john.doe@mail.com"}
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},  # missing
+        {"email": ""},  # blank
+        {"email": "john"},  # invalid
+        {"email": "john.doe@mail"},  # invalid
+        {"email": "john.doe@mail.c"},  # invalid
+    ],
+)
 @pytest.mark.django_db
-def test_email_check_success_non_existing_email_returns_false():
-    url = reverse("auth_app:email-check")
-    res = APIClient().post(url, {"email": "no.user@mail.com"}, format="json")
-    assert res.status_code == 200
-    assert res.data["email"] == "no.user@mail.com"
-    assert res.data["exists"] is False
-
-
-@pytest.mark.django_db
-def test_email_check_missing_email_returns_400():
-    url = reverse("auth_app:email-check")
-    res = APIClient().post(url, {}, format="json")
+def test_email_check_bad_request_missing_or_invalid(payload):
+    url = reverse("auth_app:email_check")
+    res = APIClient().post(url, payload, format="json")
     assert res.status_code == 400
-    assert "detail" in res.data
+    assert res.json() == {
+        "detail": ["Please check your email and try again."]
+    }
 
 
 @pytest.mark.django_db
-def test_email_check_invalid_email_returns_400():
-    url = reverse("auth_app:email-check")
-    res = APIClient().post(url, {"email": "invalid@@mail..com"}, format="json")
+def test_email_check_already_existing():
+    make_user(email="john.doe@mail.com")
+    url = reverse("auth_app:email_check")
+    res = APIClient().post(
+        url, {"email": "john.doe@mail.com"}, format="json"
+    )
     assert res.status_code == 400
-    assert "Enter a valid email address." in res.data["detail"]
+    assert res.json() == {
+        "detail": ["Please check your email and try again."]
+    }
