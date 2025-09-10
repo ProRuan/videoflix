@@ -20,93 +20,67 @@ def test_password_update_success():
     token = create_knox_token(user, hours=1)
     url = reverse("auth_app:password_update")
     payload = {
-        "token": token,
         "email": "john.doe@mail.com",
         "password": "NewPass1!",
         "repeated_password": "NewPass1!",
     }
-    res = APIClient().post(url, payload, format="json")
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+    res = client.post(url, payload, format="json")
 
     assert res.status_code == 200
     assert res.json() == {"email": "john.doe@mail.com", "user_id": user.id}
-    # token used must be deleted
-    assert AuthToken.objects.count() == 0
+    assert AuthToken.objects.count() == 0  # used token deleted
 
     # verify login works with new password
     login_url = reverse("auth_app:login")
-    ok = APIClient().post(
-        login_url, {"email": "john.doe@mail.com", "password": "NewPass1!"},
-        format="json"
-    )
+    ok = APIClient().post(login_url, {
+        "email": "john.doe@mail.com", "password": "NewPass1!"
+    }, format="json")
     assert ok.status_code == 200
 
 
 @pytest.mark.parametrize(
     "payload",
     [
-        {},  # all missing
-        {"token": ""},  # blank token
-        {"token": "bad token", "email": "john.doe@mail.com",
-         "password": "NewPass1!", "repeated_password": "NewPass1!"},  # fmt
-        {"token": "A"*64, "email": "", "password": "NewPass1!",
-         "repeated_password": "NewPass1!"},  # blank email
-        {"token": "A"*64, "email": "john", "password": "NewPass1!",
-         "repeated_password": "NewPass1!"},  # invalid email
-        {"token": "A"*64, "email": "john.doe@mail.com",
-         "password": "", "repeated_password": ""},  # blank pw
-        {"token": "A"*64, "email": "john.doe@mail.com", "password": "short",
+        {},  # missing all
+        {"email": ""},  # blank email
+        {"email": "john"},  # invalid email
+        {"email": "john.doe@mail.com"},  # missing passwords
+        {"email": "john.doe@mail.com", "password": ""},  # blank pw
+        {"email": "john.doe@mail.com", "password": "short",
          "repeated_password": "short"},  # too short
-        {"token": "A"*64, "email": "john.doe@mail.com", "password": "test123!",
+        {"email": "john.doe@mail.com", "password": "test123!",
          "repeated_password": "test123!"},  # no uppercase
-        {"token": "A"*64, "email": "john.doe@mail.com", "password": "TEST123!",
+        {"email": "john.doe@mail.com", "password": "TEST123!",
          "repeated_password": "TEST123!"},  # no lowercase
-        {"token": "A"*64, "email": "john.doe@mail.com", "password": "Testabc!",
+        {"email": "john.doe@mail.com", "password": "Testabc!",
          "repeated_password": "Testabc!"},  # no digit
-        {"token": "A"*64, "email": "john.doe@mail.com", "password": "Test1234",
+        {"email": "john.doe@mail.com", "password": "Test1234",
          "repeated_password": "Test1234"},  # no special
-        {"token": "A"*64, "email": "john.doe@mail.com",
-         "password": "NewPass1!", "repeated_password": "Other1!"},  # mismatch
+        {"email": "john.doe@mail.com", "password": "NewPass1!",
+         "repeated_password": "Other1!"},  # mismatch
+        {"email": "other@mail.com", "password": "NewPass1!",
+         "repeated_password": "NewPass1!"},  # email != token user
     ],
 )
 @pytest.mark.django_db
-def test_password_update_bad_requests(payload):
+def test_password_update_bad_request(payload):
     user = make_user(email="john.doe@mail.com", password="OldPass1!",
                      is_active=True)
-    # token exists but many payloads fail before we use it
-    create_knox_token(user, hours=1)
+    token = create_knox_token(user, hours=1)
     url = reverse("auth_app:password_update")
-    res = APIClient().post(url, payload, format="json")
+
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+    res = client.post(url, payload, format="json")
+
     assert res.status_code == 400
     assert res.json() == BAD
 
 
 @pytest.mark.django_db
-def test_password_update_token_not_found():
-    make_user(email="john.doe@mail.com", password="OldPass1!",
-              is_active=True)
+def test_password_update_unauthorized():
     url = reverse("auth_app:password_update")
-    payload = {
-        "token": "A"*64,  # looks valid, but not in DB
-        "email": "john.doe@mail.com",
-        "password": "NewPass1!",
-        "repeated_password": "NewPass1!",
-    }
-    res = APIClient().post(url, payload, format="json")
-    assert res.status_code == 404
-
-
-@pytest.mark.django_db
-def test_password_update_expired_token_returns_400():
-    user = make_user(email="john.doe@mail.com", password="OldPass1!",
-                     is_active=True)
-    token = create_knox_token(user, hours=-1)  # already expired
-    url = reverse("auth_app:password_update")
-    payload = {
-        "token": token,
-        "email": "john.doe@mail.com",
-        "password": "NewPass1!",
-        "repeated_password": "NewPass1!",
-    }
-    res = APIClient().post(url, payload, format="json")
-    assert res.status_code == 400
-    assert res.json() == BAD
+    res = APIClient().post(url, {}, format="json")
+    assert res.status_code == 401

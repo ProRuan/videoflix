@@ -76,18 +76,12 @@ class AccountReactivationSerializer(serializers.Serializer):
 
 
 class PasswordUpdateSerializer(serializers.Serializer):
-    """Validate token, email and new password for password update."""
-    token = serializers.CharField()
+    """Validate email and new password for password update."""
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, trim_whitespace=False)
     repeated_password = serializers.CharField(
         write_only=True, trim_whitespace=False
     )
-
-    def validate_token(self, value):
-        if not TOKEN_RE.match(value or ""):
-            raise serializers.ValidationError("Invalid token.")
-        return value
 
     def validate_email(self, value):
         if not is_valid_email(value):
@@ -109,15 +103,9 @@ class PasswordUpdateSerializer(serializers.Serializer):
 
 
 class DeregistrationSerializer(serializers.Serializer):
-    """Validate token, email and password for deregistration request."""
-    token = serializers.CharField()
+    """Validate email and password for deregistration."""
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, trim_whitespace=False)
-
-    def validate_token(self, value):
-        if not TOKEN_RE.match(value or ""):
-            raise serializers.ValidationError("Invalid token.")
-        return value
 
     def validate_email(self, value):
         if not is_valid_email(value):

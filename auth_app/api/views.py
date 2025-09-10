@@ -135,39 +135,31 @@ class PasswordResetView(APIView):
 
 
 class PasswordUpdateView(APIView):
-    """Update password using body token; delete that token on success."""
-    permission_classes = [permissions.AllowAny]
+    """Update password for authed user; delete current Knox token."""
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         ser = PasswordUpdateSerializer(data=request.data)
         if not ser.is_valid():
             bad = {"detail": ["Please check your input and try again."]}
             return Response(bad, status=status.HTTP_400_BAD_REQUEST)
-
-        token = ser.validated_data["token"]
-        try:
-            obj = resolve_knox_token(token)
-        except ValidationError:
+        if request.user.email != ser.validated_data["email"]:
             bad = {"detail": ["Please check your input and try again."]}
             return Response(bad, status=status.HTTP_400_BAD_REQUEST)
-        if obj is None:
-            return Response({"detail": "Not found."}, status=404)
-
-        user = obj.user
-        if user.email != ser.validated_data["email"]:
-            bad = {"detail": ["Please check your input and try again."]}
-            return Response(bad, status=status.HTTP_400_BAD_REQUEST)
-
+        user = request.user
         user.set_password(ser.validated_data["password"])
         user.save(update_fields=["password"])
-        obj.delete()
+        if hasattr(request.auth, "delete"):
+            request.auth.delete()
         out = {"email": user.email, "user_id": user.id}
         return Response(out, status=status.HTTP_200_OK)
 
 
 class DeregistrationView(APIView):
-    """Reauth by email+password, then email a 24h deletion link token."""
-    permission_classes = [permissions.AllowAny]
+    """Reauth user, then email 24h deletion link; header Knox auth."""
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         ser = DeregistrationSerializer(data=request.data)
@@ -175,49 +167,34 @@ class DeregistrationView(APIView):
             bad = {"detail": ["Please check your input and try again."]}
             return Response(bad, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            obj = resolve_knox_token(ser.validated_data["token"])
-        except ValidationError:
-            bad = {"detail": ["Please check your input and try again."]}
-            return Response(bad, status=status.HTTP_400_BAD_REQUEST)
-        if obj is None:
-            return Response({"detail": "Not found."}, status=404)
-
-        user = obj.user
-        if user.email != ser.validated_data["email"]:
+        email = ser.validated_data["email"]
+        if email != request.user.email:
             bad = {"detail": ["Please check your input and try again."]}
             return Response(bad, status=status.HTTP_400_BAD_REQUEST)
 
         authed = authenticate(
-            request, email=ser.validated_data["email"],
-            password=ser.validated_data["password"],
+            request, email=email, password=ser.validated_data["password"]
         )
-        if not authed or authed.pk != user.pk:
+        if not authed or authed.pk != request.user.pk:
             bad = {"detail": ["Please check your input and try again."]}
             return Response(bad, status=status.HTTP_400_BAD_REQUEST)
 
-        new_token = create_knox_token(user, hours=24)
+        new_token = create_knox_token(request.user, hours=24)
         link = build_deletion_link(new_token)
-        send_deletion_email(user, link)
-        return Response({"email": user.email}, status=status.HTTP_200_OK)
+        send_deletion_email(request.user, link)
+        return Response({"email": email}, status=status.HTTP_200_OK)
 
 
 class AccountDeletionView(APIView):
-    """Delete account identified by body token; delete that token too."""
-    permission_classes = [permissions.AllowAny]
+    """Delete the authenticated account and current Knox token."""
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        ser = AccountDeletionSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
-        token = ser.validated_data["token"]
-        try:
-            obj = resolve_knox_token(token)
-        except ValidationError:
-            return Response(status=status.HTTP_400_BAD_REQUEST)
-        if obj is None:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        user = obj.user
-        obj.delete()
+        token_obj = request.auth
+        user = request.user
+        if hasattr(token_obj, "delete"):
+            token_obj.delete()
         user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
