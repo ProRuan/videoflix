@@ -55,16 +55,6 @@ class RegistrationSerializer(serializers.Serializer):
         return user
 
 
-class ActivationTokenCheckSerializer(serializers.Serializer):
-    """Validate activation token format."""
-    token = serializers.CharField()
-
-    def validate_token(self, value):
-        if not TOKEN_RE.match(value or ""):
-            raise serializers.ValidationError("Invalid token.")
-        return value
-
-
 class AccountActivationSerializer(serializers.Serializer):
     """Validate body token for account activation."""
     token = serializers.CharField()

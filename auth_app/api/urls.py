@@ -4,7 +4,6 @@ from django.urls import path
 # Local imports
 from auth_app.api.views import (
     AccountActivationView,
-    ActivationTokenCheckView,
     AccountDeletionView,
     AccountReactivationView,
     DeregistrationView,
@@ -14,18 +13,12 @@ from auth_app.api.views import (
     PasswordResetView,
     PasswordUpdateView,
     RegistrationView,
-    TokenCheckView,
 )
 
 app_name = "auth_app"
 
 urlpatterns = [
     path("registration/", RegistrationView.as_view(), name="registration"),
-    path(
-        "activation-token-check/",
-        ActivationTokenCheckView.as_view(),
-        name="activation_token_check",
-    ),
     path(
         "account-activation/",
         AccountActivationView.as_view(),
@@ -49,5 +42,4 @@ urlpatterns = [
         AccountDeletionView.as_view(),
         name="account_deletion",
     ),
-    path("token-check/", TokenCheckView.as_view(), name="token_check"),
 ]
