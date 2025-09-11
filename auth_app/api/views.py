@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 from knox.auth import TokenAuthentication
 
 # Local imports
-from auth_app.api.serializers import AccountActivationSerializer, AccountDeletionSerializer, AccountReactivationSerializer, DeregistrationSerializer, PasswordUpdateSerializer, RegistrationSerializer
+from auth_app.api.serializers import AccountActivationSerializer, ActivationTokenCheckSerializer, AccountDeletionSerializer, AccountReactivationSerializer, DeregistrationSerializer, PasswordUpdateSerializer, RegistrationSerializer
 from auth_app.utils import (
     create_knox_token, build_activation_link, build_deletion_link, build_reset_link, is_valid_email, resolve_knox_token, send_activation_email, send_deletion_email, send_reset_email,
 )
@@ -32,6 +32,25 @@ class RegistrationView(APIView):
         data = {"email": user.email, "user_id": user.id,
                 "is_active": user.is_active}
         return Response(data, status=status.HTTP_201_CREATED)
+
+
+class ActivationTokenCheckView(APIView):
+    """Check activation token; return token, email and user_id."""
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        ser = ActivationTokenCheckSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        try:
+            obj = resolve_knox_token(ser.validated_data["token"])
+        except ValidationError:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        if obj is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        u = obj.user
+        data = {"token": ser.validated_data["token"],
+                "email": u.email, "user_id": u.id}
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class AccountActivationView(APIView):
