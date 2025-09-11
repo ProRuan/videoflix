@@ -52,7 +52,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'knox',
-    'auth_app',
+    'auth_app.apps.AuthAppConfig',
     'token_app',
     'video_app.apps.VideoAppConfig',
     'video_progress_app',
