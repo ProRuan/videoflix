@@ -1,3 +1,4 @@
+# token_app/utils.py
 # Standard libraries
 
 # Third-party suppliers
@@ -11,6 +12,8 @@ from rest_framework.exceptions import ValidationError
 
 def resolve_knox_token(raw: str):
     """Return AuthToken for raw token; raise on expired; None if missing."""
+    if not raw:
+        return None
     digest = hash_token(raw)
     try:
         obj = AuthToken.objects.select_related("user").get(digest=digest)

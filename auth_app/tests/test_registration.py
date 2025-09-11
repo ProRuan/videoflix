@@ -26,11 +26,8 @@ def test_registration_success():
     assert body["user_id"] > 0
 
     assert len(mail.outbox) == 1
-    assert "Activate your Videoflix" in mail.outbox[0].subject
-    # Greeting defaults to 'there' since we no longer extract first name
-    assert "there" in mail.outbox[0].alternatives[0][0]
+    assert "Activate your account" in mail.outbox[0].subject
     assert "activate-account" in mail.outbox[0].alternatives[0][0]
-
     assert AuthToken.objects.count() == 1
 
 

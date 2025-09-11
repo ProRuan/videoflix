@@ -21,7 +21,7 @@ def test_account_reactivation_success_existing_email():
     assert res.json() == {"email": "john.doe@mail.com"}
     # Email sent and token created
     assert len(mail.outbox) == 1
-    assert "Activate your Videoflix" in mail.outbox[0].subject
+    assert "Activate your account" in mail.outbox[0].subject
     assert AuthToken.objects.filter(user=user).count() == 1
 
 

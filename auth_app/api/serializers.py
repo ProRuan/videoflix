@@ -1,3 +1,4 @@
+# auth_app/api/serializers.py
 # Standard libraries
 import re
 
@@ -6,16 +7,19 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
 # Local imports
-from auth_app.utils import is_valid_email, is_strong_password
+from auth_app.utils import (
+    validate_email_or_raise,
+    validate_email_unique,
+    validate_passwords,
+)
 
 User = get_user_model()
-
 
 TOKEN_RE = re.compile(r"^[A-Za-z0-9:_\-]{10,}$")
 
 
 class RegistrationSerializer(serializers.Serializer):
-    """Validate registration payload and create a deactivated user."""
+    """Validate registration data and create a deactivated user."""
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True, trim_whitespace=False)
     repeated_password = serializers.CharField(
@@ -23,36 +27,20 @@ class RegistrationSerializer(serializers.Serializer):
     )
 
     def validate_email(self, value):
-        if not is_valid_email(value):
-            raise serializers.ValidationError("Enter a valid email address.")
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("Email already exists.")
-        return value
-
-    def validate_password(self, value):
-        ok, msg = is_strong_password(value)
-        if not ok:
-            raise serializers.ValidationError(msg)
+        validate_email_or_raise(value)
+        validate_email_unique(value)
         return value
 
     def validate(self, data):
-        p1 = data.get("password") or ""
-        p2 = data.get("repeated_password") or ""
-        if not p1:
-            return data
-        if p1 != p2:
-            raise serializers.ValidationError(
-                {"password": ["Passwords must match."]}
-            )
+        validate_passwords(data.get("password"), data.get("repeated_password"))
         return data
 
     def create(self, validated):
-        user = User.objects.create_user(
+        return User.objects.create_user(
             email=validated["email"],
             password=validated["password"],
             is_active=False,
         )
-        return user
 
 
 class AccountActivationSerializer(serializers.Serializer):
@@ -70,8 +58,7 @@ class AccountReactivationSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
     def validate_email(self, value):
-        if not is_valid_email(value):
-            raise serializers.ValidationError("Enter a valid email address.")
+        validate_email_or_raise(value)
         return value
 
 
@@ -84,21 +71,11 @@ class PasswordUpdateSerializer(serializers.Serializer):
     )
 
     def validate_email(self, value):
-        if not is_valid_email(value):
-            raise serializers.ValidationError("Enter a valid email address.")
-        return value
-
-    def validate_password(self, value):
-        ok, msg = is_strong_password(value)
-        if not ok:
-            raise serializers.ValidationError(msg)
+        validate_email_or_raise(value)
         return value
 
     def validate(self, data):
-        if data.get("password") != data.get("repeated_password"):
-            raise serializers.ValidationError(
-                {"password": ["Passwords must match."]}
-            )
+        validate_passwords(data.get("password"), data.get("repeated_password"))
         return data
 
 
@@ -108,8 +85,7 @@ class DeregistrationSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, trim_whitespace=False)
 
     def validate_email(self, value):
-        if not is_valid_email(value):
-            raise serializers.ValidationError("Enter a valid email address.")
+        validate_email_or_raise(value)
         return value
 
 
