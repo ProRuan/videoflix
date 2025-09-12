@@ -1,74 +1,48 @@
-# api/views.py
-# Third-party suppliers
-from itertools import groupby
-from operator import attrgetter
+# Standard libraries
 from datetime import timedelta
 
-from django.conf import settings
+# Third-party suppliers
 from django.utils import timezone
-from rest_framework import generics
+from knox.auth import TokenAuthentication
+from rest_framework.generics import RetrieveAPIView
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 # Local imports
-from .permissions import IsAuthenticatedReadOnly
-from .serializers import VideoSerializer, VideoDetailSerializer
-from video_app.models import Video
+from ..models import Video
+from .serializers import VideoItemSerializer
 
 
-class VideoListView(generics.ListAPIView):
-    """
-    GET /api/videos/
-    Returns an array of genre objects, with the special "New on Videoflix"
-    genre always first (when there are new videos).
-    Each genre object is: { "genre": "<name>", "videos": [ ... ] }.
+class VideoListView(APIView):
+    """Return [{genre, videos}] with 'New...' first; sorted."""
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
 
-    Ordering:
-      - Top-level genres: alphabetical (except "New on Videoflix" inserted first)
-      - Inside each videos array: created_at (newest first), then title (asc)
-    """
+    def get(self, request):
+        recent = timezone.now() - timedelta(days=90)
+        qs = Video.objects.all().order_by("-created_at", "title")
+        new_qs = qs.filter(created_at__gte=recent)
+        ctx = {"request": request}
+        buckets = [{
+            "genre": "New on Videoflix",
+            "videos": VideoItemSerializer(new_qs, many=True,
+                                          context=ctx).data,
+        }]
+        by_genre = {}
+        for v in qs:
+            by_genre.setdefault(v.genre, []).append(v)
+        for genre in sorted(by_genre):
+            data = VideoItemSerializer(by_genre[genre], many=True,
+                                       context=ctx).data
+            buckets.append({"genre": genre, "videos": data})
+        return Response(buckets)
+
+
+class VideoDetailView(RetrieveAPIView):
+    """Return a single video by id."""
     queryset = Video.objects.all()
-    serializer_class = VideoSerializer
-    permission_classes = [IsAuthenticatedReadOnly]
-
-    def list(self, request, *args, **kwargs):
-        # configured "new" window (days); default 14
-        new_days = getattr(settings, 'VIDEO_NEW_DAYS', 14)
-        today = timezone.localdate()
-        cutoff = today - timedelta(days=int(new_days))
-
-        # Base queryset ordered for grouping (genre) and then by video ordering
-        qs = self.get_queryset().order_by('genre', '-created_at', 'title')
-
-        # Build grouped list by genre
-        grouped = []
-        for genre, items in groupby(qs, key=attrgetter('genre')):
-            vids = list(items)
-            serialized = VideoSerializer(
-                vids, many=True, context=self.get_serializer_context()
-            ).data
-            grouped.append({'genre': genre, 'videos': serialized})
-
-        # Build "New on Videoflix" group (new videos across all genres)
-        recent_qs = (
-            Video.objects.filter(created_at__gte=cutoff)
-            .order_by('-created_at', 'title')
-        )
-        recent_videos = list(recent_qs)
-        if recent_videos:
-            recent_serialized = VideoSerializer(
-                recent_videos, many=True, context=self.get_serializer_context()
-            ).data
-            # insert as first element
-            grouped.insert(0, {'genre': 'New on Videoflix',
-                           'videos': recent_serialized})
-
-        return Response(grouped)
-
-
-class VideoDetailView(generics.RetrieveAPIView):
-    """
-    GET /api/videos/{pk}/ - retrieve a single video with full fields.
-    """
-    queryset = Video.objects.all()
-    serializer_class = VideoDetailSerializer
-    permission_classes = [IsAuthenticatedReadOnly]
+    serializer_class = VideoItemSerializer
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+    lookup_field = "id"

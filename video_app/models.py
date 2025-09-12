@@ -1,58 +1,34 @@
-# Standard library
-from datetime import date
+# Standard libraries
+from datetime import timedelta
 
 # Third-party suppliers
-from django.contrib.auth import get_user_model
-from django.contrib.postgres.fields import ArrayField
 from django.db import models
 
 # Local imports
-from .storage_backends import OverwriteStorage
-
-User = get_user_model()
-
-overwrite_storage = OverwriteStorage()
 
 
 class Video(models.Model):
     """
-    Represents a video.
+    Stores a single video and its derived assets for HLS playback.
     """
-    title = models.CharField(max_length=80, default='')
-    genre = models.CharField(max_length=80, default='')
-    description = models.CharField(max_length=500, default='')
+    title = models.CharField(max_length=200, default='')
+    genre = models.CharField(max_length=100, default='')
+    description = models.TextField(blank=True, default='')
+    duration = models.FloatField(default=0.0)  # seconds
     video_file = models.FileField(
-        upload_to='videos/original/', storage=overwrite_storage,
-        blank=True, null=True,
-    )
+        upload_to="videos/originals/", blank=True, null=True)
     hls_playlist = models.FileField(
-        upload_to='videos/hls/', storage=overwrite_storage,
-        blank=True, null=True,
-    )
-    preview_clip = models.FileField(
-        upload_to='videos/preview/', storage=overwrite_storage,
-        blank=True, null=True,
-    )
-    thumbnail_image = models.ImageField(
-        upload_to='videos/thumbs/', storage=overwrite_storage,
-        blank=True, null=True,
-    )
-    sprite_sheet = models.FileField(
-        upload_to='videos/sprites/', storage=overwrite_storage,
-        blank=True, null=True,
-    )
-    duration = models.IntegerField(
-        blank=True, null=True,
-        help_text='Duration in seconds'
-    )
-    available_resolutions = ArrayField(
-        models.CharField(max_length=10), default=list,
-        blank=True,
-    )
-    created_at = models.DateField(default=date.today)
+        upload_to="videos/hls/", blank=True, null=True)
+    quality_levels = models.JSONField(default=list, blank=True)
+    preview = models.FileField(upload_to="videos/previews/", blank=True)
+    thumbnail = models.ImageField(upload_to="videos/thumbs/", blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
         """
-        Get a string representing a video by title.
+        Represent a video by its title.
         """
         return self.title

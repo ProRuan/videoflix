@@ -1,16 +1,20 @@
+# Standard libraries
+
 # Third-party suppliers
 from django.apps import AppConfig
+
+# Local imports
 
 
 class VideoAppConfig(AppConfig):
     """
-    Video App Configuration including signals.
+    App config to wire signals on app ready.
     """
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'video_app'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "video_app"
 
-    def ready(self):
+    def ready(self) -> None:
         """
-        Ready the video_app signals.
+        Import signals when app is ready.
         """
-        from . import signals
+        from . import signals  # noqa: F401
