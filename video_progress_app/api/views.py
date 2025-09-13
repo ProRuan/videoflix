@@ -1,37 +1,78 @@
 # Third-party suppliers
-from rest_framework import generics
+from knox.auth import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 # Local imports
-from .permissions import IsOwnerOnly
-from .serializers import VideoProgressSerializer
-from video_progress_app.models import VideoProgress
+from ..models import VideoProgress
+from .permissions import IsOwner
+from .serializers import (VideoProgressCreateSerializer,
+                          VideoProgressDetailSerializer)
 
 
-class VideoProgressListCreateView(generics.ListCreateAPIView):
+class VideoProgressCreateView(APIView):
     """
-    Represents a video progress list-create view for /api/video-progress/.
-        - GET: List authenticated user´s video progress.
-        - POST: Create an new video progress entry.
+    POST /api/video-progress/
     """
-    serializer_class = VideoProgressSerializer
+    authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        """
-        Get queryset of authenticated user´s video progress only.
-        """
-        obj_unsorted = VideoProgress.objects.filter(user=self.request.user)
-        return obj_unsorted.order_by('-updated_at')
+    def post(self, request):
+        ser = VideoProgressCreateSerializer(data=request.data,
+                                            context={"request": request})
+        if not ser.is_valid():
+            if ser.errors.get("video_id") == ["Video not found."]:
+                return Response({"detail": "Not found."}, status=404)
+            return Response(ser.errors, status=400)
+        obj = ser.save()
+        data = VideoProgressDetailSerializer(obj).data
+        return Response(data, status=201)
 
 
-class VideoProgressDetailView(generics.RetrieveUpdateDestroyAPIView):
+class VideoProgressDetailView(APIView):
     """
-    Represents a video progress detail view for /api/video-progress/{id}/.
-        - GET: Returns the video progress of an authenticated user´s video.
-        - PATCH: Update the video progress of an authenticated user´s video.
-        - DELETE: Deletes the video progress of an authenticated user`s video.
+    GET/PATCH/DELETE /api/video-progress/{id}/
     """
-    serializer_class = VideoProgressSerializer
-    permission_classes = [IsAuthenticated, IsOwnerOnly]
-    queryset = VideoProgress.objects.all()
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated, IsOwner]
+
+    def _get_obj(self, pk):
+        try:
+            return (VideoProgress.objects
+                    .select_related("user", "video").get(pk=pk))
+        except VideoProgress.DoesNotExist:
+            return None
+
+    def get(self, request, pk: int):
+        obj = self._get_obj(pk)
+        if not obj:
+            return Response({"detail": "Not found."}, status=404)
+        self.check_object_permissions(request, obj)
+        return Response(VideoProgressDetailSerializer(obj).data)
+
+    def patch(self, request, pk: int):
+        obj = self._get_obj(pk)
+        if not obj:
+            return Response({"detail": "Not found."}, status=404)
+        self.check_object_permissions(request, obj)
+        last = request.data.get("last_position")
+        try:
+            last = float(last)
+        except (TypeError, ValueError):
+            return Response({"last_position": ["This field is invalid."]},
+                            status=400)
+        if last < 0:
+            return Response({"last_position": ["This field is invalid."]},
+                            status=400)
+        obj.last_position = last
+        obj.save(update_fields=["last_position"])
+        return Response(VideoProgressDetailSerializer(obj).data)
+
+    def delete(self, request, pk: int):
+        obj = self._get_obj(pk)
+        if not obj:
+            return Response({"detail": "Not found."}, status=404)
+        self.check_object_permissions(request, obj)
+        obj.delete()
+        return Response({})

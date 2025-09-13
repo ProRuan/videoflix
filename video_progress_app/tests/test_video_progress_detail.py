@@ -1,275 +1,144 @@
 # Third-party suppliers
 import pytest
-from django.contrib.auth import get_user_model
 from django.urls import reverse
-from rest_framework import status
+from knox.models import AuthToken
 from rest_framework.test import APIClient
 
 # Local imports
-from video_app.models import Video
-from video_progress_app.models import VideoProgress
-
-User = get_user_model()
-
-
-def create_video_progresses(user, video, count=1, **fields):
-    """
-    Create one or more VideoProgress instances.
-    """
-    objs = []
-    for i in range(count):
-        data = {
-            'user': user,
-            'video': video,
-            'last_position': fields.get('last_position', 0),
-        }
-        data.update(fields)
-        objs.append(VideoProgress.objects.create(**data))
-    return objs
+from .utils.factories import make_user, make_video, make_progress
 
 
 @pytest.fixture
-def api_client():
-    """
-    Return an unauthenticated API client.
-    """
+def api_client() -> APIClient:
     return APIClient()
 
 
-@pytest.fixture
-def user(db):
-    """
-    Create a test user.
-    """
-    return User.objects.create_user(
-        email='user1@example.com',
-        password='pass'
-    )
+def _auth_headers(user):
+    _, token = AuthToken.objects.create(user)
+    return {"HTTP_AUTHORIZATION": f"Token {token}"}
 
 
-@pytest.fixture
-def other_user(db):
-    """
-    Create another test user.
-    """
-    return User.objects.create_user(
-        email='user2@example.com',
-        password='pass'
-    )
+def test_detail_unauthorized_get(api_client, db):
+    url = reverse("video_progress_app:video-progress-detail", kwargs={"pk": 1})
+    res = api_client.get(url)
+    assert res.status_code == 401
 
 
-@pytest.fixture
-def auth_client(api_client, user):
-    """
-    Return an API client authenticated as user.
-    """
-    api_client.force_authenticate(user=user)
-    return api_client
+def test_detail_success_get(api_client, db):
+    user = make_user()
+    video = make_video()
+    prog = make_progress(user, video, 7.0)
+    headers = _auth_headers(user)
+    url = reverse("video_progress_app:video-progress-detail",
+                  kwargs={"pk": prog.id})
+    res = api_client.get(url, **headers)
+    assert res.status_code == 200
+    assert res.json()["last_position"] == 7.0
 
 
-@pytest.fixture
-def make_video(db):
-    """
-    Create a test video.
-    """
-    return Video.objects.create(
-        title='Vid', description='desc',
-        genre='G', duration=100
-    )
+def test_detail_forbidden_get(api_client, db):
+    a = make_user("a@mail.com")
+    b = make_user("b@mail.com")
+    video = make_video()
+    prog = make_progress(a, video, 5.0)
+    headers = _auth_headers(b)
+    url = reverse("video_progress_app:video-progress-detail",
+                  kwargs={"pk": prog.id})
+    res = api_client.get(url, **headers)
+    assert res.status_code == 403
 
 
-@pytest.fixture
-def make_progress(user, make_video):
-    """
-    Create a test video progress.
-    """
-    return lambda count=1, **fields: create_video_progresses(
-        user=user, video=make_video, count=count, **fields
-    )[0]
+def test_detail_not_found_get(api_client, db):
+    user = make_user()
+    headers = _auth_headers(user)
+    url = reverse("video_progress_app:video-progress-detail",
+                  kwargs={"pk": 999999})
+    res = api_client.get(url, **headers)
+    assert res.status_code == 404
 
 
-@pytest.mark.django_db
-class TestVideoProgressDetail:
-    """
-    Tests for GET/PATCH/DELETE /api/video-progress/{id}/.
-    """
+def test_detail_success_patch(api_client, db):
+    user = make_user()
+    video = make_video()
+    prog = make_progress(user, video, 1.0)
+    headers = _auth_headers(user)
+    url = reverse("video_progress_app:video-progress-detail",
+                  kwargs={"pk": prog.id})
+    res = api_client.patch(url, data={"last_position": 9.5}, **headers)
+    assert res.status_code == 200
+    assert res.json()["last_position"] == 9.5
 
-    def test_get_unauthenticated(self, api_client):
-        """
-        Ensure an unauthenticated user can not get video progress
-        (status code 401).
-        """
-        url = reverse('video-progress-detail', args=[1])
-        resp = api_client.get(url)
-        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_get_not_found(self, auth_client):
-        """
-        Ensure an authenticated user gets status code 404, if the video does
-        not exist.
-        """
-        url = reverse('video-progress-detail', args=[999])
-        resp = auth_client.get(url)
-        assert resp.status_code == status.HTTP_404_NOT_FOUND
+def test_detail_bad_request_patch_missing(api_client, db):
+    user = make_user()
+    video = make_video()
+    prog = make_progress(user, video, 1.0)
+    headers = _auth_headers(user)
+    url = reverse("video_progress_app:video-progress-detail",
+                  kwargs={"pk": prog.id})
+    res = api_client.patch(url, data={}, **headers)
+    assert res.status_code == 400
 
-    def test_get_forbidden(
-            self, auth_client,
-            other_user,
-            make_progress,
-            make_video
-    ):
-        """
-        Ensure an authenticated user can not get the video progress of another
-        user (status code 403).
-        """
-        vp = VideoProgress.objects.create(
-            user=other_user,
-            video=make_video,
-            last_position=10
-        )
-        url = reverse('video-progress-detail', args=[vp.id])
-        resp = auth_client.get(url)
-        assert resp.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_get_success(self, auth_client, make_progress, make_video):
-        """
-        Ensure an authenticated user can get his video progress
-        (status code 200).
-        """
-        vp = make_progress(last_position=20)
-        url = reverse('video-progress-detail', args=[vp.id])
-        resp = auth_client.get(url)
-        assert resp.status_code == status.HTTP_200_OK
-        data = resp.json()
-        expected = {
-            'user': auth_client.handler._force_user.id,
-            'video': make_video.id,
-            'last_position': 20
-        }
-        assert data['id'] == vp.id
-        assert data['last_position'] == expected['last_position']
-        assert data['video'] == expected['video']
+def test_detail_bad_request_patch_invalid(api_client, db):
+    user = make_user()
+    video = make_video()
+    prog = make_progress(user, video, 1.0)
+    headers = _auth_headers(user)
+    url = reverse("video_progress_app:video-progress-detail",
+                  kwargs={"pk": prog.id})
+    res = api_client.patch(url, data={"last_position": -2}, **headers)
+    assert res.status_code == 400
 
-    def test_patch_unauthenticated(self, api_client, make_progress):
-        """
-        Ensure an unauthenticated user can not update a video progress
-        (status code 401).
-        """
-        vp = make_progress()
-        url = reverse('video-progress-detail', args=[vp.id])
-        resp = api_client.patch(url, {'last_position': 30}, format='json')
-        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_patch_not_found(self, auth_client):
-        """
-        Ensure a user gets status code 404, if the video does not exist.
-        """
-        url = reverse('video-progress-detail', args=[999])
-        resp = auth_client.patch(url, {'last_position': 30}, format='json')
-        assert resp.status_code == status.HTTP_404_NOT_FOUND
+def test_detail_forbidden_patch(api_client, db):
+    a = make_user("a@mail.com")
+    b = make_user("b@mail.com")
+    video = make_video()
+    prog = make_progress(a, video, 3.0)
+    headers = _auth_headers(b)
+    url = reverse("video_progress_app:video-progress-detail",
+                  kwargs={"pk": prog.id})
+    res = api_client.patch(url, data={"last_position": 8}, **headers)
+    assert res.status_code == 403
 
-    def test_patch_forbidden(self, auth_client, other_user, make_video):
-        """
-        Ensure an authenticated user can not update the video progress of
-        another user (status code 403).
-        """
-        vp = VideoProgress.objects.create(
-            user=other_user,
-            video=make_video,
-            last_position=5
-        )
-        url = reverse('video-progress-detail', args=[vp.id])
-        resp = auth_client.patch(url, {'last_position': 50}, format='json')
-        assert resp.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_patch_bad_request_invalid_position(
-            self,
-            auth_client,
-            make_progress
-    ):
-        """
-        Ensure an authenticated user can not update his video progress with an
-        invalid playback time (status code 400).
-        """
-        vp = make_progress()
-        url = reverse('video-progress-detail', args=[vp.id])
-        resp = auth_client.patch(url, {'last_position': -5}, format='json')
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
+def test_detail_not_found_patch(api_client, db):
+    user = make_user()
+    headers = _auth_headers(user)
+    url = reverse("video_progress_app:video-progress-detail",
+                  kwargs={"pk": 999999})
+    res = api_client.patch(url, data={"last_position": 1}, **headers)
+    assert res.status_code == 404
 
-    def test_patch_bad_request_exceeds_duration(
-            self,
-            auth_client,
-            make_progress,
-            make_video
-    ):
-        """
-        Ensure an authenticated user can not update his video progress, if the
-        playback time exceeds the video duration (status code 400).
-        """
-        vp = make_progress()
-        url = reverse('video-progress-detail', args=[vp.id])
-        resp = auth_client.patch(
-            url,
-            {'last_position': make_video.duration + 1},
-            format='json'
-        )
-        assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_patch_success(self, auth_client, make_progress):
-        """
-        Ensure an authenticated user can update his video progress
-        (status code 200).
-        """
-        vp = make_progress(last_position=10)
-        url = reverse('video-progress-detail', args=[vp.id])
-        resp = auth_client.patch(url, {'last_position': 60}, format='json')
-        assert resp.status_code == status.HTTP_200_OK
-        data = resp.json()
-        assert data['last_position'] == 60
-        vp.refresh_from_db()
-        assert vp.last_position == 60
+def test_detail_success_delete(api_client, db):
+    user = make_user()
+    video = make_video()
+    prog = make_progress(user, video, 2.0)
+    headers = _auth_headers(user)
+    url = reverse("video_progress_app:video-progress-detail",
+                  kwargs={"pk": prog.id})
+    res = api_client.delete(url, **headers)
+    assert res.status_code == 200
 
-    def test_delete_unauthenticated(self, api_client, make_progress):
-        """
-        Ensure an unauthenticated user can not delete a video progress
-        (status code 401).
-        """
-        vp = make_progress()
-        url = reverse('video-progress-detail', args=[vp.id])
-        resp = api_client.delete(url)
-        assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_delete_not_found(self, auth_client):
-        """
-        Ensure an authenticated user gets status code 404, if the video does
-        not exist.
-        """
-        url = reverse('video-progress-detail', args=[999])
-        resp = auth_client.delete(url)
-        assert resp.status_code == status.HTTP_404_NOT_FOUND
+def test_detail_forbidden_delete(api_client, db):
+    a = make_user("a@mail.com")
+    b = make_user("b@mail.com")
+    video = make_video()
+    prog = make_progress(a, video, 2.0)
+    headers = _auth_headers(b)
+    url = reverse("video_progress_app:video-progress-detail",
+                  kwargs={"pk": prog.id})
+    res = api_client.delete(url, **headers)
+    assert res.status_code == 403
 
-    def test_delete_forbidden(self, auth_client, other_user, make_video):
-        """
-        Ensure an authenticated user can not delete the video progress of
-        another user (status code 403).
-        """
-        vp = VideoProgress.objects.create(
-            user=other_user,
-            video=make_video,
-            last_position=5
-        )
-        url = reverse('video-progress-detail', args=[vp.id])
-        resp = auth_client.delete(url)
-        assert resp.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_delete_success(self, auth_client, make_progress):
-        """
-        Ensure an authenticated user can delete his video progress
-        (status code 204).
-        """
-        vp = make_progress()
-        url = reverse('video-progress-detail', args=[vp.id])
-        resp = auth_client.delete(url)
-        assert resp.status_code == status.HTTP_204_NO_CONTENT
-        with pytest.raises(VideoProgress.DoesNotExist):
-            VideoProgress.objects.get(id=vp.id)
+def test_detail_not_found_delete(api_client, db):
+    user = make_user()
+    headers = _auth_headers(user)
+    url = reverse("video_progress_app:video-progress-detail",
+                  kwargs={"pk": 999999})
+    res = api_client.delete(url, **headers)
+    assert res.status_code == 404

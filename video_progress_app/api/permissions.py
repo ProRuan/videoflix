@@ -1,14 +1,9 @@
 # Third-party suppliers
-from rest_framework import permissions
+from rest_framework.permissions import BasePermission
 
 
-class IsOwnerOnly(permissions.BasePermission):
-    """
-    Allows only owner of an object to access it.
-    """
+class IsOwner(BasePermission):
+    """Only allow the object's owner."""
 
-    def has_object_permission(self, request, view, obj):
-        """
-        Check user for object permission.
-        """
-        return obj.user == request.user
+    def has_object_permission(self, request, view, obj) -> bool:
+        return getattr(obj, "user_id", None) == request.user.id
