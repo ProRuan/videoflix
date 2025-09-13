@@ -2,16 +2,12 @@
 from django.core.files.storage import FileSystemStorage
 
 
-class OverwriteStorage(FileSystemStorage):
+class OverrideStorage(FileSystemStorage):
     """
-    Represents a custom overwrite storage.
+    Storage that replaces existing files to avoid stale leftovers.
     """
 
     def get_available_name(self, name, max_length=None):
-        """
-        Check if the file already exists and overwrite it.
-        Otherwise, continue.
-        """
         if self.exists(name):
             self.delete(name)
         return name

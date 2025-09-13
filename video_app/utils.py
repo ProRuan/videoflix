@@ -1,10 +1,7 @@
 # Standard libraries
-import json
 import os
-import shlex
-import subprocess
-from datetime import datetime, timedelta
-from urllib.parse import urlparse
+from pathlib import Path
+from typing import Iterable
 
 # Third-party suppliers
 from django.conf import settings
@@ -12,70 +9,38 @@ from django.conf import settings
 # Local imports
 
 
-def run(cmd: str) -> int:
-    """
-    Run a shell command safely and return the exit code.
-    """
-    return subprocess.call(shlex.split(cmd))
+MEDIA_ROOT = Path(getattr(settings, "MEDIA_ROOT", "media"))
+MEDIA_URL = getattr(settings, "MEDIA_URL", "/media/")
+HOST = "http://127.0.0.1:8000"
 
 
-def media_path(*parts: str) -> str:
-    """
-    Build an absolute path inside MEDIA_ROOT.
-    """
-    return os.path.join(settings.MEDIA_ROOT, *parts)
+def base_media_url() -> str:
+    """Return absolute media base."""
+    return f"{HOST.rstrip('/')}{MEDIA_URL.rstrip('/')}"
 
 
-def ensure_dir(path: str) -> None:
-    """
-    Ensure directory exists for a path.
-    """
-    os.makedirs(path, exist_ok=True)
+def video_name_from_path(path: str) -> str:
+    """Derive a folder name from the original file name without suffix."""
+    stem = Path(path).stem
+    return stem.replace(" ", "_").lower()
 
 
-def probe_duration(input_path: str) -> float:
-    """
-    Read duration in seconds using ffprobe.
-    """
-    cmd = (
-        "ffprobe -v error -show_entries format=duration "
-        f"-of default=nk=1:nw=1 {shlex.quote(input_path)}"
-    )
-    out = subprocess.check_output(cmd, shell=True).decode().strip()
-    return float(out) if out else 0.0
+def ensure_dirs(paths: Iterable[Path]) -> None:
+    """Create required directories if missing."""
+    for p in paths:
+        p.mkdir(parents=True, exist_ok=True)
 
 
-def build_hls_out(video_id: int) -> str:
-    """
-    Return HLS output directory for video id.
-    """
-    return media_path("videos", "hls", f"v{video_id}")
+def absolute_url(rel: str) -> str:
+    """Map 'videos/foo/bar' to absolute media url."""
+    return f"{base_media_url().rstrip('/')}/{rel.lstrip('/')}"
 
 
-def quality_map(base_url: str) -> list[dict]:
-    """
-    Build quality_levels array for the four rungs.
-    """
+def quality_payload(name: str) -> list[dict]:
+    """Return quality levels payload for API."""
+    base = f"videos/{name}/hls"
+    labels = ["1080p", "720p", "360p", "144p"]
     return [
-        {"label": "1080p", "source": f"{base_url}/v0/index.m3u8"},
-        {"label": "720p", "source": f"{base_url}/v1/index.m3u8"},
-        {"label": "360p", "source": f"{base_url}/v2/index.m3u8"},
-        {"label": "120p", "source": f"{base_url}/v3/index.m3u8"},
+        {"label": labels[i], "source": absolute_url(f"{base}/v{i}/index.m3u8")}
+        for i in range(4)
     ]
-
-
-def abs_url(request, value: str | object) -> str | None:
-    """
-    Make an absolute URL from a FileField/relative/absolute value.
-    """
-    if not value:
-        return None
-    if hasattr(value, "url"):
-        value = value.url
-    s = str(value)
-    if urlparse(s).scheme:
-        return s
-    if not s.startswith("/"):
-        base = settings.MEDIA_URL.rstrip("/")
-        s = f"{base}/{s.lstrip('/')}"
-    return request.build_absolute_uri(s)

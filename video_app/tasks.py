@@ -1,90 +1,108 @@
 # Standard libraries
-import os
+import json
+import subprocess
+from pathlib import Path
 
 # Third-party suppliers
-from django.conf import settings
+from django.db import transaction
 
 # Local imports
 from .models import Video
-from .utils import (
-    ensure_dir, probe_duration, build_hls_out, quality_map, run, media_path,
-)
+from .utils import (MEDIA_ROOT, absolute_url, ensure_dirs, quality_payload,
+                    video_name_from_path)
 
 
-def make_hls(video_id: int) -> None:
-    """
-    Create CMAF HLS ladder, preview, thumbnail and fill model fields.
-    """
+def _run(cmd: list[str]) -> None:
+    """Run a shell command and raise on failure."""
+    subprocess.run(cmd, check=True)
+
+
+def probe_duration(src: Path) -> float:
+    """Return media duration in seconds via ffprobe."""
+    cmd = [
+        "ffprobe", "-v", "error", "-show_entries", "format=duration",
+        "-of", "json", str(src)
+    ]
+    out = subprocess.check_output(cmd)
+    data = json.loads(out.decode() or "{}")
+    return float(data.get("format", {}).get("duration", 0.0))
+
+
+def transcode_ladder(src: Path, root: Path) -> None:
+    """Create HLS ladder (v0..v3) and master playlist."""
+    hls = root / "hls"
+    ensure_dirs([hls])
+    maps = [
+        ("1920x1080", "5000k", "v0"),
+        ("1280x720", "2800k", "v1"),
+        ("640x360", "800k", "v2"),
+        ("256x144", "200k", "v3"),
+    ]
+    for size, br, folder in maps:
+        out_dir = hls / folder
+        ensure_dirs([out_dir])
+        _run([
+            "ffmpeg", "-y", "-i", str(src),
+            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+            "-g", "48", "-s:v", size, "-b:v", br, "-c:a", "aac",
+            "-hls_time", "6", "-hls_playlist_type", "vod",
+            "-hls_segment_filename", str(out_dir / "seg_%03d.ts"),
+            str(out_dir / "index.m3u8")
+        ])
+    master = hls / "master.m3u8"
+    with master.open("w", encoding="utf-8") as f:
+        f.write("#EXTM3U\n#EXT-X-VERSION:3\n")
+        f.write('#EXT-X-STREAM-INF:BANDWIDTH=6000000,RESOLUTION=1920x1080\n')
+        f.write("v0/index.m3u8\n")
+        f.write('#EXT-X-STREAM-INF:BANDWIDTH=3500000,RESOLUTION=1280x720\n')
+        f.write("v1/index.m3u8\n")
+        f.write('#EXT-X-STREAM-INF:BANDWIDTH=1200000,RESOLUTION=640x360\n')
+        f.write("v2/index.m3u8\n")
+        f.write('#EXT-X-STREAM-INF:BANDWIDTH=400000,RESOLUTION=256x144\n')
+        f.write("v3/index.m3u8\n")
+
+
+def make_preview(src: Path, root: Path) -> Path:
+    """Create a short MP4 preview clip."""
+    prev_dir = root / "previews"
+    ensure_dirs([prev_dir])
+    outp = prev_dir / "preview.mp4"
+    _run(["ffmpeg", "-y", "-ss", "0", "-t", "10", "-i", str(src),
+          "-c:v", "libx264", "-c:a", "aac", str(outp)])
+    return outp
+
+
+def make_thumbnail(src: Path, root: Path) -> Path:
+    """Create a JPG thumbnail."""
+    img_dir = root / "thumbs"
+    ensure_dirs([img_dir])
+    outp = img_dir / "thumb.jpg"
+    _run(["ffmpeg", "-y", "-ss", "5", "-i", str(src),
+          "-frames:v", "1", "-q:v", "2", str(outp)])
+    return outp
+
+
+def process_video(video_id: int) -> None:
+    """Orchestrate processing and update model fields."""
     video = Video.objects.get(id=video_id)
-    src = video.video_file.path
-    outdir = build_hls_out(video_id)
-    ensure_dir(outdir)
-    seg = 6
-    cmd = (
-        "ffmpeg -y -i {src} -filter_complex "
-        "\"[0:v]split=4[v1080][v720][v360][v120];"
-        "[v1080]scale=-2:1080:flags=lanczos[v0];"
-        "[v720]scale=-2:720:flags=lanczos[v1];"
-        "[v360]scale=-2:360:flags=lanczos[v2];"
-        "[v120]scale=-2:120:flags=lanczos[v3]\" "
-        "-map [v0] -map a:0? -c:v:0 libx264 -b:v:0 5000k -maxrate:v:0 5350k "
-        "-bufsize:v:0 10000k -g:v:0 60 -sc_threshold:v:0 0 "
-        "-force_key_frames:v:0 expr:gte(t,n_forced*2) "
-        "-map [v1] -map a:0? -c:v:1 libx264 -b:v:1 2800k -maxrate:v:1 3000k "
-        "-bufsize:v:1 6000k -g:v:1 60 -sc_threshold:v:1 0 "
-        "-force_key_frames:v:1 expr:gte(t,n_forced*2) "
-        "-map [v2] -map a:0? -c:v:2 libx264 -b:v:2 800k -maxrate:v:2 900k "
-        "-bufsize:v:2 1600k -g:v:2 60 -sc_threshold:v:2 0 "
-        "-force_key_frames:v:2 expr:gte(t,n_forced*2) "
-        "-map [v3] -map a:0? -c:v:3 libx264 -b:v:3 200k -maxrate:v:3 220k "
-        "-bufsize:v:3 400k -g:v:3 60 -sc_threshold:v:3 0 "
-        "-force_key_frames:v:3 expr:gte(t,n_forced*2) "
-        "-c:a aac -ac 2 -ar 48000 -b:a 128k "
-        f"-f hls -hls_time {seg} -hls_playlist_type vod "
-        "-hls_flags independent_segments -hls_segment_type fmp4 "
-        "-master_pl_name master.m3u8 "
-        "-var_stream_map \"v:0,a:0 v:1,a:0 v:2,a:0 v:3,a:0\" "
-        f"-hls_segment_filename {outdir}/v%v/seg_%03d.m4s "
-        f"{outdir}/v%v/index.m3u8"
-    ).format(src=shlex_quote(src))
-    run(cmd)
-    make_derivatives(video, outdir)
-
-
-def make_derivatives(video: Video, outdir: str) -> None:
-    """
-    Create preview and thumbnail, update model with URLs and duration.
-    """
-    prev = media_path("videos", "previews", f"v{video.id}.mp4")
-    thumb = media_path("videos", "thumbs", f"v{video.id}.jpg")
-    ensure_dir(os.path.dirname(prev))
-    ensure_dir(os.path.dirname(thumb))
-    run(f"ffmpeg -y -ss 3 -t 10 -i {shlex_quote(video.video_file.path)} "
-        "-c:v libx264 -preset veryfast -crf 22 -c:a aac -b:a 128k "
-        "-movflags +faststart {shlex_quote(prev)}")
-    run(f"ffmpeg -y -ss 5 -i {shlex_quote(video.video_file.path)} "
-        "-frames:v 1 -q:v 2 -vf scale=1280:-2:flags=lanczos "
-        f"{shlex_quote(thumb)}")
-    update_video_fields(video, outdir, prev, thumb)
-
-
-def update_video_fields(video: Video, outdir: str,
-                        prev: str, thumb: str) -> None:
-    """
-    Save derived paths, quality map and duration on the model.
-    """
-    base = settings.MEDIA_URL.rstrip("/") + "/videos/hls/" + f"v{video.id}"
-    video.hls_playlist.name = f"videos/hls/v{video.id}/master.m3u8"
-    video.quality_levels = quality_map(base)
-    video.preview.name = os.path.relpath(prev, settings.MEDIA_ROOT)
-    video.thumbnail.name = os.path.relpath(thumb, settings.MEDIA_ROOT)
-    video.duration = probe_duration(video.video_file.path)
-    video.save()
-
-
-def shlex_quote(s: str) -> str:
-    """
-    Local tiny wrapper to avoid importing shlex in many places.
-    """
-    import shlex
-    return shlex.quote(s)
+    if not video.video_file:
+        return
+    src = MEDIA_ROOT / str(video.video_file)
+    name = video_name_from_path(src.name)
+    root = MEDIA_ROOT / "videos" / name
+    ensure_dirs([root])
+    dur = probe_duration(src)
+    transcode_ladder(src, root)
+    prev = make_preview(src, root)
+    thumb = make_thumbnail(src, root)
+    master_rel = f"videos/{name}/hls/master.m3u8"
+    with transaction.atomic():
+        video.duration = dur
+        video.hls_playlist.name = master_rel
+        video.quality_levels = quality_payload(name)
+        video.preview.name = f"videos/{name}/previews/preview.mp4"
+        video.thumbnail.name = f"videos/{name}/thumbs/thumb.jpg"
+        video.save(update_fields=[
+            "duration", "hls_playlist", "quality_levels",
+            "preview", "thumbnail"
+        ])

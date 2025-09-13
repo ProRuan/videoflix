@@ -1,48 +1,58 @@
 # Standard libraries
+from collections import defaultdict
 from datetime import timedelta
 
 # Third-party suppliers
+from django.conf import settings
 from django.utils import timezone
-from knox.auth import TokenAuthentication
-from rest_framework.generics import RetrieveAPIView
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from knox.auth import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated
 
 # Local imports
 from ..models import Video
-from .serializers import VideoItemSerializer
+from .serializers import VideoDetailSerializer, VideoListItemSerializer
 
 
 class VideoListView(APIView):
-    """Return [{genre, videos}] with 'New...' first; sorted."""
+    """
+    GET /api/videos/ -> [{genre, videos}]
+    """
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        recent = timezone.now() - timedelta(days=90)
-        qs = Video.objects.all().order_by("-created_at", "title")
-        new_qs = qs.filter(created_at__gte=recent)
-        ctx = {"request": request}
-        buckets = [{
-            "genre": "New on Videoflix",
-            "videos": VideoItemSerializer(new_qs, many=True,
-                                          context=ctx).data,
-        }]
-        by_genre = {}
-        for v in qs:
-            by_genre.setdefault(v.genre, []).append(v)
-        for genre in sorted(by_genre):
-            data = VideoItemSerializer(by_genre[genre], many=True,
-                                       context=ctx).data
-            buckets.append({"genre": genre, "videos": data})
-        return Response(buckets)
+        videos = Video.objects.all().order_by("-created_at", "title")
+        new_days = getattr(settings, "VIDEO_NEW_DAYS", 90)
+        cutoff = timezone.now() - timedelta(days=new_days)
+        new_items = [v for v in videos if v.created_at >= cutoff]
+        grouped = defaultdict(list)
+        for v in videos:
+            grouped[v.genre].append(v)
+        payload = []
+        if new_items:
+            ser = VideoListItemSerializer(new_items, many=True,
+                                          context={"request": request})
+            payload.append({"genre": "New on Videoflix", "videos": ser.data})
+        for genre in sorted(grouped.keys()):
+            ser = VideoListItemSerializer(grouped[genre], many=True,
+                                          context={"request": request})
+            payload.append({"genre": genre, "videos": ser.data})
+        return Response(payload)
 
 
-class VideoDetailView(RetrieveAPIView):
-    """Return a single video by id."""
-    queryset = Video.objects.all()
-    serializer_class = VideoItemSerializer
+class VideoDetailView(APIView):
+    """
+    GET /api/videos/{id}/ -> {video}
+    """
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
-    lookup_field = "id"
+
+    def get(self, request, pk: int):
+        try:
+            video = Video.objects.get(pk=pk)
+        except Video.DoesNotExist:
+            return Response({"detail": "Not found."}, status=404)
+        data = VideoDetailSerializer(video, context={"request": request}).data
+        return Response({"video": data})
