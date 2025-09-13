@@ -6,6 +6,12 @@ from video_app.models import Video
 from ..models import VideoProgress
 
 
+def _rel(last: float, dur: float) -> float:
+    if not dur or dur <= 0:
+        return 0.0
+    return round(last / dur * 100.0, 2)
+
+
 class VideoProgressCreateSerializer(serializers.Serializer):
     """Create progress for the authenticated user."""
     video_id = serializers.IntegerField()
@@ -20,10 +26,12 @@ class VideoProgressCreateSerializer(serializers.Serializer):
 
     def create(self, validated):
         user_id = self.context["request"].user.id
+        video = Video.objects.get(id=validated["video_id"])
+        rel = _rel(validated["last_position"], video.duration)
         obj, _ = VideoProgress.objects.update_or_create(
-            user_id=user_id,
-            video_id=validated["video_id"],
-            defaults={"last_position": validated["last_position"]},
+            user_id=user_id, video_id=video.id,
+            defaults={"last_position": validated["last_position"],
+                      "relative_position": rel},
         )
         return obj
 
@@ -35,4 +43,5 @@ class VideoProgressDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = VideoProgress
-        fields = ("id", "user_id", "video_id", "last_position")
+        fields = ("id", "user_id", "video_id",
+                  "last_position", "relative_position")

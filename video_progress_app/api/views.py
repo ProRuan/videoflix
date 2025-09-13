@@ -12,9 +12,6 @@ from .serializers import (VideoProgressCreateSerializer,
 
 
 class VideoProgressCreateView(APIView):
-    """
-    POST /api/video-progress/
-    """
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
 
@@ -26,14 +23,10 @@ class VideoProgressCreateView(APIView):
                 return Response({"detail": "Not found."}, status=404)
             return Response(ser.errors, status=400)
         obj = ser.save()
-        data = VideoProgressDetailSerializer(obj).data
-        return Response(data, status=201)
+        return Response(VideoProgressDetailSerializer(obj).data, status=201)
 
 
 class VideoProgressDetailView(APIView):
-    """
-    GET/PATCH/DELETE /api/video-progress/{id}/
-    """
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated, IsOwner]
 
@@ -65,8 +58,10 @@ class VideoProgressDetailView(APIView):
         if last < 0:
             return Response({"last_position": ["This field is invalid."]},
                             status=400)
+        dur = obj.video.duration or 0.0
         obj.last_position = last
-        obj.save(update_fields=["last_position"])
+        obj.relative_position = round(last / dur * 100, 2) if dur > 0 else 0.0
+        obj.save(update_fields=["last_position", "relative_position"])
         return Response(VideoProgressDetailSerializer(obj).data)
 
     def delete(self, request, pk: int):
@@ -75,4 +70,4 @@ class VideoProgressDetailView(APIView):
             return Response({"detail": "Not found."}, status=404)
         self.check_object_permissions(request, obj)
         obj.delete()
-        return Response({})
+        return Response(status=204)

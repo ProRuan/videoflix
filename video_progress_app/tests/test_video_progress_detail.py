@@ -120,7 +120,7 @@ def test_detail_success_delete(api_client, db):
     url = reverse("video_progress_app:video-progress-detail",
                   kwargs={"pk": prog.id})
     res = api_client.delete(url, **headers)
-    assert res.status_code == 200
+    assert res.status_code == 204
 
 
 def test_detail_forbidden_delete(api_client, db):

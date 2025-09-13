@@ -13,6 +13,7 @@ class VideoProgress(models.Model):
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
     video = models.ForeignKey(Video, on_delete=models.CASCADE)
     last_position = models.FloatField(default=0.0)
+    relative_position = models.FloatField(default=0.0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
