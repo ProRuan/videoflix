@@ -67,15 +67,13 @@ def test_list_grouped_and_new_section(api_client, auth_header, db):
     assert titles == {"A", "B", "C"}
 
 
-def test_list_started_videos_and_zero_defaults(api_client, db, settings):
-    # 2 recent videos (so they appear under "New on Videoflix")
+def test_list_progress_fields_appear_only_for_started(api_client, db):
     now = timezone.now()
-    v1 = Video.objects.create(title="A", genre="Drama",
-                              created_at=now, duration=100.0)
-    v2 = Video.objects.create(title="B", genre="Drama",
-                              created_at=now, duration=200.0)
+    v1 = Video.objects.create(title="A", genre="Drama", created_at=now,
+                              duration=100.0)
+    v2 = Video.objects.create(title="B", genre="Drama", created_at=now,
+                              duration=200.0)
     user, headers = _auth_headers_for()
-    # progress only for v1
     VideoProgress.objects.create(user=user, video=v1,
                                  last_position=10.0, relative_position=10.0)
 
@@ -84,23 +82,17 @@ def test_list_started_videos_and_zero_defaults(api_client, db, settings):
     assert res.status_code == 200
     payload = res.json()
 
-    # Sections should include "New on Videoflix" and "Started videos"
-    genres = [g["genre"] for g in payload]
-    assert "New on Videoflix" in genres
-    assert "Started videos" in genres
-
-    # Find "Started videos" section
+    # "Started videos" only contains v1
     started = next(g for g in payload if g["genre"] == "Started videos")
-    started_titles = [v["title"] for v in started["videos"]]
-    assert started_titles == ["A"]  # only v1 started
-    sv = started["videos"][0]
-    assert sv["last_position"] == 10.0
-    assert sv["relative_position"] == 10.0
+    titles = [v["title"] for v in started["videos"]]
+    assert titles == ["A"]
+    item = started["videos"][0]
+    assert "progress_id" in item and "relative_position" in item
 
-    # In the genre section, v2 must have zeros for no progress
+    # In genre section, v2 has no progress fields
     drama = next(g for g in payload if g["genre"] == "Drama")
     items = {v["title"]: v for v in drama["videos"]}
-    assert items["A"]["last_position"] == 10.0
-    assert items["A"]["relative_position"] == 10.0
-    assert items["B"]["last_position"] == 0.0
-    assert items["B"]["relative_position"] == 0.0
+    assert "progress_id" in items["A"]
+    assert "relative_position" in items["A"]
+    assert "progress_id" not in items["B"]
+    assert "relative_position" not in items["B"]

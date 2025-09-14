@@ -18,45 +18,6 @@ def _auth_headers(user):
     return {"HTTP_AUTHORIZATION": f"Token {token}"}
 
 
-def test_detail_unauthorized_get(api_client, db):
-    url = reverse("video_progress_app:video-progress-detail", kwargs={"pk": 1})
-    res = api_client.get(url)
-    assert res.status_code == 401
-
-
-def test_detail_success_get(api_client, db):
-    user = make_user()
-    video = make_video()
-    prog = make_progress(user, video, 7.0)
-    headers = _auth_headers(user)
-    url = reverse("video_progress_app:video-progress-detail",
-                  kwargs={"pk": prog.id})
-    res = api_client.get(url, **headers)
-    assert res.status_code == 200
-    assert res.json()["last_position"] == 7.0
-
-
-def test_detail_forbidden_get(api_client, db):
-    a = make_user("a@mail.com")
-    b = make_user("b@mail.com")
-    video = make_video()
-    prog = make_progress(a, video, 5.0)
-    headers = _auth_headers(b)
-    url = reverse("video_progress_app:video-progress-detail",
-                  kwargs={"pk": prog.id})
-    res = api_client.get(url, **headers)
-    assert res.status_code == 403
-
-
-def test_detail_not_found_get(api_client, db):
-    user = make_user()
-    headers = _auth_headers(user)
-    url = reverse("video_progress_app:video-progress-detail",
-                  kwargs={"pk": 999999})
-    res = api_client.get(url, **headers)
-    assert res.status_code == 404
-
-
 def test_detail_success_patch(api_client, db):
     user = make_user()
     video = make_video()

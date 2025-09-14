@@ -63,18 +63,6 @@ def _auth_headers(user):
     return {"HTTP_AUTHORIZATION": f"Token {token}"}
 
 
-def test_detail_includes_last_position_default_zero(api_client, db):
-    user = make_user()
-    video = make_video(title="Wolf", genre="Nature")
-    headers = _auth_headers(user)
-    url = reverse("video_app:video-detail", kwargs={"pk": video.id})
-    res = api_client.get(url, **headers)
-    assert res.status_code == 200
-    body = res.json()
-    assert body["video"]["id"] == video.id
-    assert body["video"]["last_position"] == 0.0
-
-
 def test_detail_includes_last_position_from_progress(api_client, db):
     user = make_user()
     video = make_video(title="Bear", genre="Nature")
@@ -85,3 +73,28 @@ def test_detail_includes_last_position_from_progress(api_client, db):
     assert res.status_code == 200
     body = res.json()
     assert body["video"]["last_position"] == 12.5
+
+
+def test_detail_no_progress_omits_fields(api_client, db):
+    user = make_user()
+    video = make_video(title="Wolf", genre="Nature")
+    headers = _auth_headers(user)
+    url = reverse("video_app:video-detail", kwargs={"pk": video.id})
+    res = api_client.get(url, **headers)
+    assert res.status_code == 200
+    body = res.json()["video"]
+    assert "progress_id" not in body
+    assert "last_position" not in body
+
+
+def test_detail_with_progress_includes_fields(api_client, db):
+    user = make_user()
+    video = make_video(title="Bear", genre="Nature")
+    prog = make_progress(user, video, last=12.5)
+    headers = _auth_headers(user)
+    url = reverse("video_app:video-detail", kwargs={"pk": video.id})
+    res = api_client.get(url, **headers)
+    assert res.status_code == 200
+    body = res.json()["video"]
+    assert body["progress_id"] == prog.id
+    assert body["last_position"] == 12.5

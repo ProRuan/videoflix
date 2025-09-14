@@ -37,13 +37,6 @@ class VideoProgressDetailView(APIView):
         except VideoProgress.DoesNotExist:
             return None
 
-    def get(self, request, pk: int):
-        obj = self._get_obj(pk)
-        if not obj:
-            return Response({"detail": "Not found."}, status=404)
-        self.check_object_permissions(request, obj)
-        return Response(VideoProgressDetailSerializer(obj).data)
-
     def patch(self, request, pk: int):
         obj = self._get_obj(pk)
         if not obj:
