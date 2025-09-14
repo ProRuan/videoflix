@@ -1,5 +1,9 @@
+# Standard libraries
+
 # Third-party suppliers
 from django.apps import AppConfig
+
+# Local imports
 
 
 class AuthAppConfig(AppConfig):
@@ -8,4 +12,5 @@ class AuthAppConfig(AppConfig):
     name = "auth_app"
 
     def ready(self) -> None:
-        from . import signals
+        # Import signals to register handlers.
+        from . import signals  # noqa: F401

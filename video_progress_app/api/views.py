@@ -7,8 +7,11 @@ from rest_framework.views import APIView
 # Local imports
 from ..models import VideoProgress
 from .permissions import IsOwner
-from .serializers import (VideoProgressCreateSerializer,
-                          VideoProgressDetailSerializer)
+from .serializers import (
+    VideoProgressCreateSerializer,
+    VideoProgressDetailSerializer,
+    VideoProgressUpdateSerializer,
+)
 
 
 class VideoProgressCreateView(APIView):
@@ -42,19 +45,10 @@ class VideoProgressDetailView(APIView):
         if not obj:
             return Response({"detail": "Not found."}, status=404)
         self.check_object_permissions(request, obj)
-        last = request.data.get("last_position")
-        try:
-            last = float(last)
-        except (TypeError, ValueError):
-            return Response({"last_position": ["This field is invalid."]},
-                            status=400)
-        if last < 0:
-            return Response({"last_position": ["This field is invalid."]},
-                            status=400)
-        dur = obj.video.duration or 0.0
-        obj.last_position = last
-        obj.relative_position = round(last / dur * 100, 2) if dur > 0 else 0.0
-        obj.save(update_fields=["last_position", "relative_position"])
+        ser = VideoProgressUpdateSerializer(obj, data=request.data)
+        if not ser.is_valid():
+            return Response(ser.errors, status=400)
+        ser.save()
         return Response(VideoProgressDetailSerializer(obj).data)
 
     def delete(self, request, pk: int):

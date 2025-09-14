@@ -1,11 +1,13 @@
 # Standard libraries
-from typing import Any
 
 # Third-party suppliers
 from django.apps import AppConfig
 
+# Local imports
+
 
 class VideoAppConfig(AppConfig):
+    """AppConfig ensuring signals are registered."""
     default_auto_field = "django.db.models.BigAutoField"
     name = "video_app"
 

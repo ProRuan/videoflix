@@ -1,4 +1,3 @@
-# auth_app/api/urls.py
 # Third-party suppliers
 from django.urls import path
 

@@ -36,6 +36,28 @@ class VideoProgressCreateSerializer(serializers.Serializer):
         return obj
 
 
+class VideoProgressUpdateSerializer(serializers.ModelSerializer):
+    """Validate and update last_position; recompute relative_position."""
+    last_position = serializers.FloatField(required=True)
+
+    class Meta:
+        model = VideoProgress
+        fields = ("last_position",)
+
+    def validate_last_position(self, value):
+        if value < 0:
+            raise serializers.ValidationError("This field is invalid.")
+        return value
+
+    def update(self, instance, validated):
+        dur = instance.video.duration or 0.0
+        last = validated["last_position"]
+        instance.last_position = last
+        instance.relative_position = _rel(last, dur)
+        instance.save(update_fields=["last_position", "relative_position"])
+        return instance
+
+
 class VideoProgressDetailSerializer(serializers.ModelSerializer):
     """Payload for read/update/delete."""
     user_id = serializers.IntegerField(source="user.id", read_only=True)

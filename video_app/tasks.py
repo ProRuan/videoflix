@@ -2,14 +2,22 @@
 import json
 import subprocess
 from pathlib import Path
+from typing import Iterable
 
 # Third-party suppliers
 from django.db import transaction
 
 # Local imports
 from .models import Video
-from .utils import (MEDIA_ROOT, absolute_url, ensure_dirs, quality_payload,
-                    video_name_from_path)
+from .utils import MEDIA_ROOT, ensure_dirs, quality_payload, video_name_from_path
+
+
+LADDER = [
+    ("1920x1080", "5000k", "v0", 6000000),
+    ("1280x720", "2800k", "v1", 3500000),
+    ("640x360", "800k", "v2", 1200000),
+    ("256x144", "200k", "v3", 400000),
+]
 
 
 def _run(cmd: list[str]) -> None:
@@ -19,54 +27,51 @@ def _run(cmd: list[str]) -> None:
 
 def probe_duration(src: Path) -> float:
     """Return media duration in seconds via ffprobe."""
-    cmd = [
+    out = subprocess.check_output([
         "ffprobe", "-v", "error", "-show_entries", "format=duration",
         "-of", "json", str(src)
-    ]
-    out = subprocess.check_output(cmd)
+    ])
     data = json.loads(out.decode() or "{}")
     return float(data.get("format", {}).get("duration", 0.0))
 
 
+def transcode_variant(src: Path, out_dir: Path, size: str, bitrate: str) -> None:
+    """Transcode a single HLS variant into out_dir."""
+    ensure_dirs([out_dir])
+    _run([
+        "ffmpeg", "-y", "-i", str(src),
+        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+        "-g", "48", "-s:v", size, "-b:v", bitrate, "-c:a", "aac",
+        "-hls_time", "6", "-hls_playlist_type", "vod",
+        "-hls_segment_filename", str(out_dir / "seg_%03d.ts"),
+        str(out_dir / "index.m3u8"),
+    ])
+
+
+def write_master_playlist(hls_dir: Path, entries: Iterable[tuple[str, int]]) -> None:
+    """Write master.m3u8 referencing variant playlists."""
+    master = hls_dir / "master.m3u8"
+    lines = ["#EXTM3U", "#EXT-X-VERSION:3"]
+    for res, bw in entries:
+        lines.append(f"#EXT-X-STREAM-INF:BANDWIDTH={bw},RESOLUTION={res}")
+        lines.append(f"v{len(lines)//2 - 1}/index.m3u8")
+    master.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def transcode_ladder(src: Path, root: Path) -> None:
-    """Create HLS ladder (v0..v3) and master playlist."""
+    """Create HLS ladder directories and a master playlist."""
     hls = root / "hls"
     ensure_dirs([hls])
-    maps = [
-        ("1920x1080", "5000k", "v0"),
-        ("1280x720", "2800k", "v1"),
-        ("640x360", "800k", "v2"),
-        ("256x144", "200k", "v3"),
-    ]
-    for size, br, folder in maps:
-        out_dir = hls / folder
-        ensure_dirs([out_dir])
-        _run([
-            "ffmpeg", "-y", "-i", str(src),
-            "-c:v", "libx264", "-preset", "medium", "-crf", "20",
-            "-g", "48", "-s:v", size, "-b:v", br, "-c:a", "aac",
-            "-hls_time", "6", "-hls_playlist_type", "vod",
-            "-hls_segment_filename", str(out_dir / "seg_%03d.ts"),
-            str(out_dir / "index.m3u8")
-        ])
-    master = hls / "master.m3u8"
-    with master.open("w", encoding="utf-8") as f:
-        f.write("#EXTM3U\n#EXT-X-VERSION:3\n")
-        f.write('#EXT-X-STREAM-INF:BANDWIDTH=6000000,RESOLUTION=1920x1080\n')
-        f.write("v0/index.m3u8\n")
-        f.write('#EXT-X-STREAM-INF:BANDWIDTH=3500000,RESOLUTION=1280x720\n')
-        f.write("v1/index.m3u8\n")
-        f.write('#EXT-X-STREAM-INF:BANDWIDTH=1200000,RESOLUTION=640x360\n')
-        f.write("v2/index.m3u8\n")
-        f.write('#EXT-X-STREAM-INF:BANDWIDTH=400000,RESOLUTION=256x144\n')
-        f.write("v3/index.m3u8\n")
+    for size, br, folder, _ in LADDER:
+        transcode_variant(src, hls / folder, size, br)
+    entries = [(size, bw) for size, _, _, bw in LADDER]
+    write_master_playlist(hls, entries)
 
 
 def make_preview(src: Path, root: Path) -> Path:
     """Create a short MP4 preview clip."""
-    prev_dir = root / "previews"
-    ensure_dirs([prev_dir])
-    outp = prev_dir / "preview.mp4"
+    outp = root / "previews" / "preview.mp4"
+    ensure_dirs([outp.parent])
     _run(["ffmpeg", "-y", "-ss", "0", "-t", "10", "-i", str(src),
           "-c:v", "libx264", "-c:a", "aac", str(outp)])
     return outp
@@ -74,12 +79,23 @@ def make_preview(src: Path, root: Path) -> Path:
 
 def make_thumbnail(src: Path, root: Path) -> Path:
     """Create a JPG thumbnail."""
-    img_dir = root / "thumbs"
-    ensure_dirs([img_dir])
-    outp = img_dir / "thumb.jpg"
+    outp = root / "thumbs" / "thumb.jpg"
+    ensure_dirs([outp.parent])
     _run(["ffmpeg", "-y", "-ss", "5", "-i", str(src),
           "-frames:v", "1", "-q:v", "2", str(outp)])
     return outp
+
+
+def update_video_record(video: Video, name: str, dur: float) -> None:
+    """Persist derived fields for a processed video."""
+    video.duration = dur
+    video.hls_playlist.name = f"videos/{name}/hls/master.m3u8"
+    video.quality_levels = quality_payload(name)
+    video.preview.name = f"videos/{name}/previews/preview.mp4"
+    video.thumbnail.name = f"videos/{name}/thumbs/thumb.jpg"
+    video.save(update_fields=[
+        "duration", "hls_playlist", "quality_levels", "preview", "thumbnail"
+    ])
 
 
 def process_video(video_id: int) -> None:
@@ -93,16 +109,7 @@ def process_video(video_id: int) -> None:
     ensure_dirs([root])
     dur = probe_duration(src)
     transcode_ladder(src, root)
-    prev = make_preview(src, root)
-    thumb = make_thumbnail(src, root)
-    master_rel = f"videos/{name}/hls/master.m3u8"
+    make_preview(src, root)
+    make_thumbnail(src, root)
     with transaction.atomic():
-        video.duration = dur
-        video.hls_playlist.name = master_rel
-        video.quality_levels = quality_payload(name)
-        video.preview.name = f"videos/{name}/previews/preview.mp4"
-        video.thumbnail.name = f"videos/{name}/thumbs/thumb.jpg"
-        video.save(update_fields=[
-            "duration", "hls_playlist", "quality_levels",
-            "preview", "thumbnail"
-        ])
+        update_video_record(video, name, dur)

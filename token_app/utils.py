@@ -1,5 +1,6 @@
 # token_app/utils.py
 # Standard libraries
+import secrets
 
 # Third-party suppliers
 from django.utils import timezone
@@ -8,6 +9,11 @@ from knox.models import AuthToken
 from rest_framework.exceptions import ValidationError
 
 # Local imports
+
+
+def generate_token_value() -> str:
+    """Return a 64-char hex token (URL-safe, DB-unique recommended)."""
+    return secrets.token_hex(32)  # 32 bytes => 64 hex chars
 
 
 def resolve_knox_token(raw: str):

@@ -1,3 +1,5 @@
+# Standard libraries
+
 # Third-party suppliers
 from django.contrib import admin
 
@@ -7,27 +9,22 @@ from .models import Video
 
 @admin.register(Video)
 class VideoAdmin(admin.ModelAdmin):
-    """
-    Admin for Video with human-friendly quality levels.
-    """
+    """Admin for Video with human-friendly quality levels."""
     list_display = (
-        "title", "genre", "duration", "quality_labels", "video_file",
-        "created_at",
+        "title", "genre", "duration", "quality_labels",
+        "video_file", "created_at",
     )
     readonly_fields = (
         "duration", "quality_labels", "hls_playlist",
         "preview", "thumbnail", "created_at",
     )
     fieldsets = (
-        ("Basic info", {
-            "fields": ("title", "genre", "description", "video_file"),
-        }),
+        ("Basic info", {"fields": ("title", "genre",
+                                   "description", "video_file")}),
         ("Generated assets", {
-            "fields": (
-                "duration", "quality_labels", "hls_playlist",
-                "preview", "thumbnail",
-            ),
-            "description": "Those fields are automatically generated.",
+            "fields": ("duration", "quality_labels", "hls_playlist",
+                       "preview", "thumbnail"),
+            "description": "Automatically generated fields.",
         }),
         ("Dates", {"fields": ("created_at",)}),
     )

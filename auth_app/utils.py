@@ -1,14 +1,13 @@
-# auth_app/utils.py
 # Standard libraries
 import re
 from datetime import timedelta
 
 # Third-party suppliers
 from django.conf import settings
-from django.template.loader import render_to_string
+from django.contrib.auth import authenticate, get_user_model
 from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
 from django.utils import timezone
-from django.contrib.auth import get_user_model
 from knox.crypto import hash_token
 from knox.models import AuthToken
 from rest_framework import serializers
@@ -19,12 +18,18 @@ from rest_framework import serializers
 EMAIL_RE = re.compile(
     r"^[A-ZÀ-Ÿa-zà-ÿß0-9._%+-]+@[A-ZÀ-Ÿa-zà-ÿß0-9.-]+\.[A-ZÀ-Ÿa-zà-ÿß]{2,}$"
 )
-
 FORBIDDEN_PW_RE = re.compile(r"[^A-Za-zÀ-Ÿà-ÿß0-9!@#$%^&*]")
 UPPER_RE = re.compile(r"[A-ZÀ-Ÿ]")
 LOWER_RE = re.compile(r"[a-zà-ÿß]")
 DIGIT_RE = re.compile(r"\d")
 SPECIAL_RE = re.compile(r"[!@#$%^&*]")
+
+
+ACTIVATION_TTL_H = 24
+REACTIVATION_TTL_H = 24
+LOGIN_TTL_H = 12
+RESET_TTL_H = 1
+DELETION_TTL_H = 24
 
 
 def get_frontend_url() -> str:
@@ -81,13 +86,15 @@ def validate_passwords(password: str, confirm: str | None = None) -> None:
     """Validate password and optional confirmation."""
     if password == "":
         raise serializers.ValidationError(
-            {"password": ["This field may not be blank."]})
+            {"password": ["This field may not be blank."]}
+        )
     ok, msg = is_strong_password(password)
     if not ok:
         raise serializers.ValidationError({"password": [msg]})
     if confirm is not None and password != confirm:
         raise serializers.ValidationError(
-            {"password": ["Passwords must match."]})
+            {"password": ["Passwords must match."]}
+        )
 
 
 def create_knox_token(user, hours: int) -> str:
@@ -95,31 +102,6 @@ def create_knox_token(user, hours: int) -> str:
     ttl = timedelta(hours=hours)
     _, token = AuthToken.objects.create(user=user, expiry=ttl)
     return token
-
-
-def create_login_token(user) -> str:
-    """Create login token (12h)."""
-    return create_knox_token(user, hours=12)
-
-
-def create_registration_token(user) -> str:
-    """Create registration token (24h)."""
-    return create_knox_token(user, hours=24)
-
-
-def create_reactivation_token(user) -> str:
-    """Create account reactivation token (24h)."""
-    return create_knox_token(user, hours=24)
-
-
-def create_password_reset_token(user) -> str:
-    """Create password reset token (1h)."""
-    return create_knox_token(user, hours=1)
-
-
-def create_deregistration_token(user) -> str:
-    """Create deregistration token (24h)."""
-    return create_knox_token(user, hours=24)
 
 
 def resolve_knox_token(raw: str):
@@ -182,3 +164,8 @@ def send_deletion_email(user, link: str) -> None:
         {"first_name": getattr(user, "first_name", ""), "link": link},
     )
     _send_html_email("Confirm account deletion", html, user.email)
+
+
+def reauthenticate(request, email: str, password: str):
+    """Return the user if credentials are valid, else None."""
+    return authenticate(request, email=email, password=password)

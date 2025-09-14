@@ -34,4 +34,4 @@ class Token(models.Model):
 
     def __str__(self):
         """Return token type and user email."""
-        return f"{self.type} • {self.user_id}"
+        return f"{self.type} • {getattr(self.user, 'email', self.user_id)}"

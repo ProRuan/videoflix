@@ -48,16 +48,6 @@ def test_detail_not_found(api_client, auth_header, db):
     assert res.status_code == 404
 
 
-# Third-party suppliers
-
-# Local imports
-
-
-@pytest.fixture
-def api_client() -> APIClient:
-    return APIClient()
-
-
 def _auth_headers(user):
     _, token = AuthToken.objects.create(user)
     return {"HTTP_AUTHORIZATION": f"Token {token}"}

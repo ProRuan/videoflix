@@ -2,20 +2,20 @@
 from video_app.models import Video
 
 
-def get_video_instance(self):
+def get_video_instance(serializer):
     """
-    Get the associated video instance from payload or serializer instance.
+    Get Video from incoming payload (create) or the serializer instance.
     """
-    video_id = self.initial_data.get('video')
+    video_id = serializer.initial_data.get("video")
     if video_id:
         return Video.objects.filter(pk=video_id).first()
-    if self.instance:
-        return getattr(self.instance, 'video', None)
+    if serializer.instance:
+        return getattr(serializer.instance, "video", None)
     return None
 
 
-def exceeds_video_duration(self, value, video):
+def exceeds_video_duration(value, video):
     """
-    Check if value exceeds an available video duration.
+    True if 'value' exceeds the video's known duration (seconds).
     """
     return bool(video and video.duration and value > video.duration)

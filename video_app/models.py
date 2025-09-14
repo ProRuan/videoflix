@@ -1,3 +1,5 @@
+# Standard libraries
+
 # Third-party suppliers
 from django.db import models
 
@@ -6,9 +8,7 @@ from .storage_backends import OverrideStorage
 
 
 class Video(models.Model):
-    """
-    Stores a single video and its derived assets for HLS playback.
-    """
+    """A single video and its derived HLS assets."""
     title = models.CharField(max_length=200, default="")
     genre = models.CharField(max_length=100, default="")
     description = models.TextField(blank=True, default="")

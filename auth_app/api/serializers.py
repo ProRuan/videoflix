@@ -1,4 +1,3 @@
-# auth_app/api/serializers.py
 # Standard libraries
 import re
 
@@ -14,7 +13,6 @@ from auth_app.utils import (
 )
 
 User = get_user_model()
-
 TOKEN_RE = re.compile(r"^[A-Za-z0-9:_\-]{10,}$")
 
 
