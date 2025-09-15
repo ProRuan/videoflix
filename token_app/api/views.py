@@ -1,9 +1,7 @@
-# token_app/api/views.py
-# Standard libraries
-
 # Third-party suppliers
 from knox.auth import TokenAuthentication as KnoxAuth
-from rest_framework import permissions, status
+from rest_framework import status
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError
@@ -14,10 +12,15 @@ from token_app.utils import resolve_knox_token
 
 
 class ActivationTokenCheckView(APIView):
-    """Check activation token; return token, email and user_id."""
-    permission_classes = [permissions.AllowAny]
+    """
+    Class representing an activation token check serializer.
+
+    Validates an account activation token.
+    """
+    permission_classes = [AllowAny]
 
     def post(self, request):
+        """Post an activation token and perform activation token check."""
         ser = ActivationTokenCheckSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         try:
@@ -33,11 +36,16 @@ class ActivationTokenCheckView(APIView):
 
 
 class TokenCheckView(APIView):
-    """Verify Knox token and return token, email and user_id."""
+    """
+    Class representing a token check view.
+
+    Validates a token.
+    """
     authentication_classes = [KnoxAuth]
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        """Post a token and perform token check."""
         auth = request.META.get("HTTP_AUTHORIZATION", "")
         token = auth.split(" ", 1)[1] if auth.startswith("Token ") else ""
         data = {"token": token, "email": request.user.email,

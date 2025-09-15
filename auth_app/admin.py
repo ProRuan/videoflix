@@ -10,7 +10,7 @@ User = get_user_model()
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    """Admin configuration for the custom User model."""
+    """Admin for User model."""
     ordering = ["email"]
     search_fields = ["email"]
     list_display = ["email", "is_active", "is_staff", "is_superuser"]
