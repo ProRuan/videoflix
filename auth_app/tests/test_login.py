@@ -1,5 +1,3 @@
-# Standard libraries
-
 # Third-party suppliers
 import pytest
 from django.urls import reverse
@@ -15,12 +13,12 @@ BAD = {"detail": ["Please check your login data and try again."]}
 
 @pytest.mark.django_db
 def test_login_success():
+    """Test for successful login."""
     user = make_user(email="john.doe@mail.com", password="Test123!",
                      is_active=True)
     url = reverse("auth_app:login")
     payload = {"email": "john.doe@mail.com", "password": "Test123!"}
     res = APIClient().post(url, payload, format="json")
-
     assert res.status_code == 200
     body = res.json()
     assert body["email"] == "john.doe@mail.com"
@@ -32,18 +30,18 @@ def test_login_success():
 @pytest.mark.parametrize(
     "payload",
     [
-        {},  # missing both
-        {"email": ""},  # blank email
-        {"email": "john"},  # invalid email
-        {"email": "john.doe@mail.com"},  # missing password
-        {"email": "john.doe@mail.com", "password": ""},  # blank pw
-        {"email": "nouser@mail.com", "password": "Test123!"},  # no user
-        {"email": "john.doe@mail.com", "password": "Wrong123!"},  # wrong pw
+        {},
+        {"email": ""},
+        {"email": "john"},
+        {"email": "john.doe@mail.com"},
+        {"email": "john.doe@mail.com", "password": ""},
+        {"email": "nouser@mail.com", "password": "Test123!"},
+        {"email": "john.doe@mail.com", "password": "Wrong123!"},
     ],
 )
 @pytest.mark.django_db
 def test_login_failed_authentication(payload):
-    # Prepare an existing user for cases that need it
+    """Test for login with failed authentication."""
     make_user(email="john.doe@mail.com", password="Test123!", is_active=True)
     url = reverse("auth_app:login")
     res = APIClient().post(url, payload, format="json")

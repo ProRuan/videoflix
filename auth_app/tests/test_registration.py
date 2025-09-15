@@ -1,5 +1,3 @@
-# Standard libraries
-
 # Third-party suppliers
 import pytest
 from django.core import mail
@@ -13,18 +11,17 @@ from auth_app.tests.utils.factories import make_user
 
 @pytest.mark.django_db
 def test_registration_success():
+    """Test for successful registration."""
     url = reverse("auth_app:registration")
     payload = {"email": "john.doe@mail.com",
                "password": "Test123!",
                "repeated_password": "Test123!"}
     res = APIClient().post(url, data=payload, format="json")
-
     assert res.status_code == 201
     body = res.json()
     assert body["email"] == "john.doe@mail.com"
     assert body["is_active"] is False
     assert body["user_id"] > 0
-
     assert len(mail.outbox) == 1
     assert "Activate your account" in mail.outbox[0].subject
     assert "activate-account" in mail.outbox[0].alternatives[0][0]
@@ -34,6 +31,7 @@ def test_registration_success():
 @pytest.mark.parametrize("good", ["john.doe@mail.com", "j@m.eu"])
 @pytest.mark.django_db
 def test_registration_email_good(good):
+    """Test for successful registration with good email."""
     url = reverse("auth_app:registration")
     data = {"email": good, "password": "Test123!",
             "repeated_password": "Test123!"}
@@ -52,6 +50,7 @@ def test_registration_email_good(good):
 )
 @pytest.mark.django_db
 def test_registration_email_bad(email, err):
+    """Test for registration with bad email."""
     url = reverse("auth_app:registration")
     data = {"email": email, "password": "Test123!",
             "repeated_password": "Test123!"}
@@ -62,6 +61,7 @@ def test_registration_email_bad(email, err):
 
 @pytest.mark.django_db
 def test_registration_email_exists():
+    """Test for registration with already existing email."""
     make_user(email="john.doe@mail.com")
     url = reverse("auth_app:registration")
     data = {"email": "john.doe@mail.com", "password": "Test123!",
@@ -85,6 +85,7 @@ def test_registration_email_exists():
 )
 @pytest.mark.django_db
 def test_registration_password_bad(pw, err):
+    """Test for registration with bad password."""
     url = reverse("auth_app:registration")
     data = {"email": "john.doe@mail.com", "password": pw,
             "repeated_password": pw}
