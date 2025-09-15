@@ -55,5 +55,5 @@ class User(AbstractBaseUser, PermissionsMixin):
     objects = UserManager()
 
     def __str__(self) -> str:
-        """Represent the user by the email."""
+        """Represent a user by email."""
         return self.email

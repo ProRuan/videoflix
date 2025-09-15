@@ -8,5 +8,5 @@ class AuthAppConfig(AppConfig):
     name = "auth_app"
 
     def ready(self) -> None:
-        """Import signals when Django is ready."""
+        """Import auth signals when Django is ready."""
         from . import signals

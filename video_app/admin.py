@@ -1,5 +1,3 @@
-# Standard libraries
-
 # Third-party suppliers
 from django.contrib import admin
 
@@ -9,7 +7,7 @@ from .models import Video
 
 @admin.register(Video)
 class VideoAdmin(admin.ModelAdmin):
-    """Admin for Video with human-friendly quality levels."""
+    """Admin for Video model."""
     list_display = (
         "title", "genre", "duration", "quality_labels",
         "video_file", "created_at",

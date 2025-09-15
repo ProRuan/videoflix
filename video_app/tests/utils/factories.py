@@ -1,6 +1,3 @@
-# Standard libraries
-from datetime import timedelta
-
 # Third-party suppliers
 from django.utils import timezone
 
@@ -9,11 +6,11 @@ from video_app.models import Video
 
 
 def make_video(**kwargs) -> Video:
-    """Factory for Video with sane defaults."""
+    """Make Video with defaults."""
     now = timezone.now()
     defaults = dict(
-        title="Sample",
-        genre="Drama",
+        title="Wolf",
+        genre="Nature",
         description="",
         duration=0.0,
         created_at=now,

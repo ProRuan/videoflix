@@ -9,7 +9,12 @@ from django.db import transaction
 
 # Local imports
 from .models import Video
-from .utils import MEDIA_ROOT, ensure_dirs, quality_payload, video_name_from_path
+from .utils import (
+    MEDIA_ROOT,
+    ensure_dirs,
+    quality_payload,
+    video_name_from_path
+)
 
 
 LADDER = [

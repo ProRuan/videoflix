@@ -1,5 +1,3 @@
-# Standard libraries
-
 # Third-party suppliers
 from django.db import models
 
@@ -8,11 +6,11 @@ from .storage_backends import OverrideStorage
 
 
 class Video(models.Model):
-    """A single video and its derived HLS assets."""
+    """Class representing a video and its derived HLS assets."""
     title = models.CharField(max_length=200, default="")
     genre = models.CharField(max_length=100, default="")
     description = models.TextField(blank=True, default="")
-    duration = models.FloatField(default=0.0)  # seconds
+    duration = models.FloatField(default=0.0)
     video_file = models.FileField(
         upload_to="videos/originals/", blank=True, null=True,
         storage=OverrideStorage()
@@ -34,5 +32,5 @@ class Video(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
-        """Represent a video by its title."""
+        """Represent a video by title."""
         return self.title
