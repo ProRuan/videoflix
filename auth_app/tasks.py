@@ -1,10 +1,6 @@
-# Standard libraries
-
 # Third-party suppliers
 from django.utils import timezone
 from knox.models import AuthToken
-
-# Local imports
 
 
 def delete_user_expired_knox_tokens(user_id: int) -> int:

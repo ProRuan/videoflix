@@ -1,9 +1,5 @@
-# Standard libraries
-
 # Third-party suppliers
 from django.contrib.auth import get_user_model
-
-# Local imports
 
 User = get_user_model()
 

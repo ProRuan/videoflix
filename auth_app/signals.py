@@ -24,5 +24,5 @@ def enqueue_cleanup_on_token_create(sender, instance, created, **kwargs):
         return
     try:
         enqueue(delete_user_expired_knox_tokens, instance.user_id)
-    except Exception:  # pragma: no cover
+    except Exception:
         logger.exception("Failed to enqueue token cleanup task.")

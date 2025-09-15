@@ -1,5 +1,3 @@
-# Standard libraries
-
 # Third-party suppliers
 from django.contrib.auth.models import (
     AbstractBaseUser,
@@ -8,12 +6,12 @@ from django.contrib.auth.models import (
 )
 from django.db import models
 
-# Local imports
-
 
 class UserManager(BaseUserManager):
     """
-    Manager providing factories for user and superuser creation.
+    Class representing a user manager.
+
+    Provides factories for user and superuser creation.
     """
 
     def create_user(self, email, password=None, **extra_fields):
@@ -38,7 +36,11 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin):
-    """Custom user that authenticates with a unique email."""
+    """
+    Class representing a user with unique email.
+
+    The email is used for authentication.
+    """
     email = models.EmailField(unique=True)
     username = models.CharField(max_length=30, blank=True)
     first_name = models.CharField(max_length=30, blank=True)
@@ -53,5 +55,5 @@ class User(AbstractBaseUser, PermissionsMixin):
     objects = UserManager()
 
     def __str__(self) -> str:
-        """Return the email as the string representation."""
+        """Represent the user by the email."""
         return self.email

@@ -12,9 +12,6 @@ from knox.crypto import hash_token
 from knox.models import AuthToken
 from rest_framework import serializers
 
-# Local imports
-
-
 EMAIL_RE = re.compile(
     r"^[A-ZÀ-Ÿa-zà-ÿß0-9._%+-]+@[A-ZÀ-Ÿa-zà-ÿß0-9.-]+\.[A-ZÀ-Ÿa-zà-ÿß]{2,}$"
 )
@@ -24,7 +21,6 @@ LOWER_RE = re.compile(r"[a-zà-ÿß]")
 DIGIT_RE = re.compile(r"\d")
 SPECIAL_RE = re.compile(r"[!@#$%^&*]")
 
-
 ACTIVATION_TTL_H = 24
 REACTIVATION_TTL_H = 24
 LOGIN_TTL_H = 12
@@ -33,7 +29,7 @@ DELETION_TTL_H = 24
 
 
 def get_frontend_url() -> str:
-    """Return base frontend URL with localhost fallback."""
+    """Get base frontend URL with localhost fallback."""
     base = getattr(settings, "FRONTEND_URL", "http://localhost:4200")
     return base.rstrip("/")
 
@@ -120,17 +116,17 @@ def resolve_knox_token(raw: str):
 
 
 def build_activation_link(token: str) -> str:
-    """Link for account activation."""
+    """Build link for account activation."""
     return build_frontend_link(f"activate-account/{token}")
 
 
 def build_reset_link(token: str) -> str:
-    """Link for password reset."""
+    """Build link for password reset."""
     return build_frontend_link(f"reset-password/{token}")
 
 
 def build_deletion_link(token: str) -> str:
-    """Link for account deletion."""
+    """Build link for account deletion."""
     return build_frontend_link(f"delete-account/{token}")
 
 
