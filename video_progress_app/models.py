@@ -8,7 +8,9 @@ from video_app.models import Video
 
 class VideoProgress(models.Model):
     """
-    User's last watched position (seconds) for a given Video.
+    Class representing a video progress.
+
+    Holds the last position of a started video.
     """
     user = models.ForeignKey(get_user_model(), on_delete=models.CASCADE)
     video = models.ForeignKey(Video, on_delete=models.CASCADE)
@@ -25,4 +27,5 @@ class VideoProgress(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
+        """Represent a video progress by its user, video and last position."""
         return f"{self.user_id}:{self.video_id}@{self.last_position:.2f}s"

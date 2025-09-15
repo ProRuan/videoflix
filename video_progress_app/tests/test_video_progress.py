@@ -13,29 +13,35 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture
 def api_client() -> APIClient:
+    """Get APIClient."""
     return APIClient()
 
 
 def _auth_headers(user):
+    """Get auth headers."""
     _, token = AuthToken.objects.create(user=user)
     return {"HTTP_AUTHORIZATION": f"Token {token}"}
 
 
 def _url_create():
+    """Get URL."""
     return reverse("video_progress_app:video-progress-create")
 
 
 def _url_detail(pid: int):
+    """Get URL detail."""
     return reverse("video_progress_app:video-progress-detail",
                    kwargs={"pk": pid})
 
 
 def _set_duration(video, seconds: float):
+    """Set video duration."""
     video.duration = seconds
     video.save(update_fields=["duration"])
 
 
 def _create_progress(api_client, user, video, last: float) -> int:
+    """Create video progress."""
     res = api_client.post(
         _url_create(), {"video_id": video.id, "last_position": last},
         **_auth_headers(user),
@@ -43,14 +49,8 @@ def _create_progress(api_client, user, video, last: float) -> int:
     return res.json()["id"]
 
 
-def test_create_unauthorized(api_client):
-    """Ensure unauthorized requests are rejected."""
-    res = api_client.post(_url_create(), data={})
-    assert res.status_code == 401
-
-
-def test_create_success(api_client):
-    """Create progress returns 201 with body."""
+def test_video_progress_create_success(api_client):
+    """Test for successful video progress creation."""
     user, video = make_user(), make_video()
     res = api_client.post(
         _url_create(), {"video_id": video.id, "last_position": 33.3},
@@ -60,8 +60,14 @@ def test_create_success(api_client):
     assert res.json()["video_id"] == video.id
 
 
-def test_create_bad_request_missing(api_client):
-    """Missing last_position yields 400."""
+def test_video_progress_create_unauthorized(api_client):
+    """Test for video progress creation with unauthorized user."""
+    res = api_client.post(_url_create(), data={})
+    assert res.status_code == 401
+
+
+def test_video_progress_create_missing_last_position(api_client):
+    """Test for video progress with missing last_position."""
     user = make_user()
     res = api_client.post(
         _url_create(), {"video_id": 1}, **_auth_headers(user)
@@ -69,8 +75,8 @@ def test_create_bad_request_missing(api_client):
     assert res.status_code == 400
 
 
-def test_create_bad_request_invalid_position(api_client):
-    """Negative last_position yields 400."""
+def test_video_progress_create_invalid_position(api_client):
+    """Test for video progress creation with invalid last position."""
     user, video = make_user(), make_video()
     res = api_client.post(
         _url_create(), {"video_id": video.id, "last_position": -1},
@@ -79,8 +85,8 @@ def test_create_bad_request_invalid_position(api_client):
     assert res.status_code == 400
 
 
-def test_create_video_not_found(api_client):
-    """Unknown video returns 404."""
+def test_video_progress_create_video_not_found(api_client):
+    """Test for video progress creation with non-existing video."""
     user = make_user()
     res = api_client.post(
         _url_create(), {"video_id": 999999, "last_position": 3},
@@ -89,8 +95,8 @@ def test_create_video_not_found(api_client):
     assert res.status_code == 404
 
 
-def test_create_sets_relative_position(api_client):
-    """Relative position is computed as percent with 2 decimals."""
+def test_video_progress_create_relative_position(api_client):
+    """Test for video progress creation with calculating relative position."""
     user, video = make_user(), make_video()
     _set_duration(video, 100.0)
     res = api_client.post(
@@ -103,8 +109,8 @@ def test_create_sets_relative_position(api_client):
     assert body["relative_position"] == 25.0
 
 
-def test_patch_updates_relative_position(api_client):
-    """PATCH updates last_position and recalculates percent."""
+def test_video_progress_patch_updates_relative_position(api_client):
+    """Test for video progress update with relative position."""
     user, video = make_user(), make_video()
     _set_duration(video, 200.0)
     pid = _create_progress(api_client, user, video, 10)

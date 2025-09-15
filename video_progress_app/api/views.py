@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 # Local imports
-from ..models import VideoProgress
+from video_progress_app.models import VideoProgress
 from .permissions import IsOwner
 from .serializers import (
     VideoProgressCreateSerializer,
@@ -15,10 +15,16 @@ from .serializers import (
 
 
 class VideoProgressCreateView(APIView):
+    """
+    Class representing a video progress create view.
+
+    Post a video progress for specific user and video.
+    """
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        """Post video progress."""
         ser = VideoProgressCreateSerializer(data=request.data,
                                             context={"request": request})
         if not ser.is_valid():
@@ -30,10 +36,16 @@ class VideoProgressCreateView(APIView):
 
 
 class VideoProgressDetailView(APIView):
+    """
+    Class representing a video progress detail view.
+
+    Patches and deletes video progress.
+    """
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated, IsOwner]
 
     def _get_obj(self, pk):
+        """Get video progress for specific user and video."""
         try:
             return (VideoProgress.objects
                     .select_related("user", "video").get(pk=pk))
@@ -41,6 +53,7 @@ class VideoProgressDetailView(APIView):
             return None
 
     def patch(self, request, pk: int):
+        """Patch video progress."""
         obj = self._get_obj(pk)
         if not obj:
             return Response({"detail": "Not found."}, status=404)
@@ -52,6 +65,7 @@ class VideoProgressDetailView(APIView):
         return Response(VideoProgressDetailSerializer(obj).data)
 
     def delete(self, request, pk: int):
+        """Delete video progress."""
         obj = self._get_obj(pk)
         if not obj:
             return Response({"detail": "Not found."}, status=404)

@@ -7,6 +7,6 @@ from .models import VideoProgress
 
 @admin.register(VideoProgress)
 class VideoProgressAdmin(admin.ModelAdmin):
-    """Admin for video progress entries."""
+    """Admin for video progress."""
     list_display = ("id", "user", "video", "last_position", "created_at")
     readonly_fields = ("created_at",)
