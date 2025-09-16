@@ -12,24 +12,36 @@ from auth_app.utils import create_knox_token
 BAD = {"detail": ["Please check your input and try again."]}
 
 
+def _url():
+    """Get URL."""
+    return reverse("auth_app:deregistration")
+
+
+def _auth_client(token: str) -> APIClient:
+    """Get auth client."""
+    c = APIClient()
+    c.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+    return c
+
+
+def _payload(email="john.doe@mail.com", pw="Test123!"):
+    """Get deregistration payload."""
+    return {"email": email, "password": pw}
+
+
 @pytest.mark.django_db
 def test_deregistration_success():
     """Test for successful deregistration."""
     user = make_user(email="john.doe@mail.com", password="Test123!",
                      is_active=True)
     token = create_knox_token(user, hours=24)
-    url = reverse("auth_app:deregistration")
-    client = APIClient()
-    client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
-    res = client.post(url, {
-        "email": "john.doe@mail.com", "password": "Test123!"
-    }, format="json")
-    assert res.status_code == 200
-    assert res.json() == {"email": "john.doe@mail.com"}
+    res = _auth_client(token).post(_url(), _payload(), format="json")
+    assert res.status_code == 200 and res.json() == {"email": user.email}
     assert AuthToken.objects.filter(user=user).count() == 2
     assert len(mail.outbox) == 1
-    assert "Confirm account deletion" in mail.outbox[0].subject
-    assert "delete-account" in mail.outbox[0].alternatives[0][0]
+    msg = mail.outbox[0]
+    assert "Confirm account deletion" in msg.subject
+    assert "delete-account" in msg.alternatives[0][0]
 
 
 @pytest.mark.parametrize(
@@ -45,22 +57,16 @@ def test_deregistration_success():
 )
 @pytest.mark.django_db
 def test_deregistration_bad_requests(payload):
-    """Test for deregistration with missing or invalid data."""
+    """Test for deregistration with invalid data."""
     user = make_user(email="john.doe@mail.com", password="Test123!",
                      is_active=True)
     token = create_knox_token(user, hours=24)
-    url = reverse("auth_app:deregistration")
-    client = APIClient()
-    client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
-    res = client.post(url, payload, format="json")
-    assert res.status_code == 400
-    assert res.json() == BAD
+    res = _auth_client(token).post(_url(), payload, format="json")
+    assert res.status_code == 400 and res.json() == BAD
 
 
 @pytest.mark.django_db
 def test_deregistration_unauthorized():
     """Test for deregistration with unauthorized user."""
-    url = reverse("auth_app:deregistration")
-    res = APIClient().post(url, {"email": "john.doe@mail.com",
-                                 "password": "Test123!"}, format="json")
+    res = APIClient().post(_url(), _payload(), format="json")
     assert res.status_code == 401

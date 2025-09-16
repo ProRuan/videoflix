@@ -11,29 +11,41 @@ from auth_app.utils import create_knox_token
 BAD = {"detail": ["Please check your input and try again."]}
 
 
+def _url():
+    """Get URL."""
+    return reverse("auth_app:password_update")
+
+
+def _auth_client(token: str) -> APIClient:
+    """Get auth client."""
+    c = APIClient()
+    c.credentials(HTTP_AUTHORIZATION=f"Token {token}")
+    return c
+
+
+def _login(email: str, password: str):
+    """Log in user."""
+    return APIClient().post(
+        reverse("auth_app:login"),
+        {"email": email, "password": password},
+        format="json",
+    )
+
+
 @pytest.mark.django_db
 def test_password_update_success():
     """Test for successful password update."""
     user = make_user(email="john.doe@mail.com", password="OldPass1!",
                      is_active=True)
     token = create_knox_token(user, hours=1)
-    url = reverse("auth_app:password_update")
-    payload = {
-        "email": "john.doe@mail.com",
-        "password": "NewPass1!",
-        "repeated_password": "NewPass1!",
+    payload = {"email": user.email, "password": "NewPass1!",
+               "repeated_password": "NewPass1!"}
+    res = _auth_client(token).post(_url(), payload, format="json")
+    assert res.status_code == 200 and res.json() == {
+        "email": user.email, "user_id": user.id
     }
-    client = APIClient()
-    client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
-    res = client.post(url, payload, format="json")
-    assert res.status_code == 200
-    assert res.json() == {"email": "john.doe@mail.com", "user_id": user.id}
     assert AuthToken.objects.count() == 0
-    login_url = reverse("auth_app:login")
-    ok = APIClient().post(login_url, {
-        "email": "john.doe@mail.com", "password": "NewPass1!"
-    }, format="json")
-    assert ok.status_code == 200
+    assert _login(user.email, "NewPass1!").status_code == 200
 
 
 @pytest.mark.parametrize(
@@ -62,21 +74,16 @@ def test_password_update_success():
 )
 @pytest.mark.django_db
 def test_password_update_bad_request(payload):
-    """Test for password update with missing or invalid data."""
+    """Test for password update with invalid data."""
     user = make_user(email="john.doe@mail.com", password="OldPass1!",
                      is_active=True)
     token = create_knox_token(user, hours=1)
-    url = reverse("auth_app:password_update")
-    client = APIClient()
-    client.credentials(HTTP_AUTHORIZATION=f"Token {token}")
-    res = client.post(url, payload, format="json")
-    assert res.status_code == 400
-    assert res.json() == BAD
+    res = _auth_client(token).post(_url(), payload, format="json")
+    assert res.status_code == 400 and res.json() == BAD
 
 
 @pytest.mark.django_db
 def test_password_update_unauthorized():
     """Test for password update with unauthorized user."""
-    url = reverse("auth_app:password_update")
-    res = APIClient().post(url, {}, format="json")
+    res = APIClient().post(_url(), {}, format="json")
     assert res.status_code == 401

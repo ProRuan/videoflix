@@ -15,6 +15,9 @@ from rest_framework import serializers
 EMAIL_RE = re.compile(
     r"^[A-ZÀ-Ÿa-zà-ÿß0-9._%+-]+@[A-ZÀ-Ÿa-zà-ÿß0-9.-]+\.[A-ZÀ-Ÿa-zà-ÿß]{2,}$"
 )
+FORBIDDEN_EMAIL_RE = re.compile(r"[^A-ZÀ-Ÿa-ÿß0-9._%+\-@]")
+
+PW_MIN_LENGTH = 8
 FORBIDDEN_PW_RE = re.compile(r"[^A-Za-zÀ-Ÿà-ÿß0-9!@#$%^&*]")
 UPPER_RE = re.compile(r"[A-ZÀ-Ÿ]")
 LOWER_RE = re.compile(r"[a-zà-ÿß]")
@@ -44,13 +47,18 @@ def is_valid_email(email: str) -> bool:
     return bool(EMAIL_RE.match(email or ""))
 
 
+def has_email_forbidden_char(email: str) -> bool:
+    """Check email for not allowed characters."""
+    return bool(FORBIDDEN_EMAIL_RE.search(email or ""))
+
+
 def validate_email_or_raise(email: str) -> None:
     """Validate email and raise DRF ValidationError on failures."""
     if email == "":
         raise serializers.ValidationError("This field may not be blank.")
+    if has_email_forbidden_char(email):
+        raise serializers.ValidationError("Not allowed special character.")
     if not is_valid_email(email):
-        if "#" in (email or ""):
-            raise serializers.ValidationError("Not allowed special character.")
         raise serializers.ValidationError("Enter a valid email address.")
 
 
@@ -65,7 +73,7 @@ def is_strong_password(password: str) -> tuple[bool, str | None]:
     """Check password policy and return (ok, message)."""
     if FORBIDDEN_PW_RE.search(password or ""):
         return False, "Not allowed special character."
-    if len(password or "") < 8:
+    if len(password or "") < PW_MIN_LENGTH:
         return False, "Use at least 8 characters."
     if not UPPER_RE.search(password or ""):
         return False, "Use at least one uppercase character."
