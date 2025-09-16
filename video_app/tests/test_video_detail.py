@@ -16,84 +16,72 @@ def api_client() -> APIClient:
     return APIClient()
 
 
+def _auth_headers(user):
+    """Get auth headers for specific user."""
+    _, token = AuthToken.objects.create(user=user)
+    return {"HTTP_AUTHORIZATION": f"Token {token}"}
+
+
+def _detail_url(pk: int) -> str:
+    """Get video detail URL."""
+    return reverse("video_app:video-detail", kwargs={"pk": pk})
+
+
 @pytest.fixture
 def auth_header(db):
     """Get auth header."""
     User = get_user_model()
-    user = User.objects.create_user(email="u@mail.com", password="Pwd12345!")
-    _, token = AuthToken.objects.create(user)
-    return {"HTTP_AUTHORIZATION": f"Token {token}"}
-
-
-def _auth_headers(user):
-    """Get auth headers for logged in user."""
-    _, token = AuthToken.objects.create(user)
-    return {"HTTP_AUTHORIZATION": f"Token {token}"}
+    u = User.objects.create_user(email="u@mail.com", password="Pwd12345!")
+    return _auth_headers(u)
 
 
 def test_detail_success(api_client, auth_header, db):
     """Test for successful video detail receipt."""
     v = make_video(title="Wolf", genre="Nature")
-    url = reverse("video_app:video-detail", kwargs={"pk": v.id})
-    res = api_client.get(url, **auth_header)
+    res = api_client.get(_detail_url(v.id), **auth_header)
+    body = res.json()["video"]
     assert res.status_code == 200
-    body = res.json()
-    assert "video" in body
-    assert body["video"]["id"] == v.id
-    assert body["video"]["title"] == "Wolf"
-    assert "duration" in body["video"]
-    assert "quality_levels" in body["video"]
+    assert body["id"] == v.id and body["title"] == "Wolf"
+    assert "duration" in body and "quality_levels" in body
 
 
 def test_detail_unauthorized(api_client):
-    """Test for video detail with unauthorized user."""
-    url = reverse("video_app:video-detail", kwargs={"pk": 1})
-    res = api_client.get(url)
-    assert res.status_code == 401
+    """Test for video detail receipt with unauthorized user."""
+    assert api_client.get(_detail_url(1)).status_code == 401
 
 
 def test_detail_with_progress_fields(api_client, db):
-    """Test for video detail including video progress fields."""
+    """Test for successful video detail receipt with progress fields."""
     user = make_user()
     video = make_video(title="Bear", genre="Nature")
     prog = make_progress(user, video, last=12.5)
-    headers = _auth_headers(user)
-    url = reverse("video_app:video-detail", kwargs={"pk": video.id})
-    res = api_client.get(url, **headers)
-    assert res.status_code == 200
+    res = api_client.get(_detail_url(video.id), **_auth_headers(user))
     body = res.json()["video"]
-    assert body["progress_id"] == prog.id
-    assert body["last_position"] == 12.5
+    assert res.status_code == 200
+    assert body["progress_id"] == prog.id and body["last_position"] == 12.5
 
 
 def test_detail_with_last_position(api_client, db):
-    """Test for video detail including last_position field."""
+    """Test for video detail receipt with last position."""
     user = make_user()
     video = make_video(title="Bear", genre="Nature")
     make_progress(user, video, last=12.5)
-    headers = _auth_headers(user)
-    url = reverse("video_app:video-detail", kwargs={"pk": video.id})
-    res = api_client.get(url, **headers)
+    res = api_client.get(_detail_url(video.id), **_auth_headers(user))
     assert res.status_code == 200
-    body = res.json()
-    assert body["video"]["last_position"] == 12.5
+    assert res.json()["video"]["last_position"] == 12.5
 
 
 def test_detail_no_progress(api_client, db):
-    """Test for video detail without video progress fields."""
+    """Test for video detail receipt without progress fields."""
     user = make_user()
     video = make_video(title="Wolf", genre="Nature")
-    headers = _auth_headers(user)
-    url = reverse("video_app:video-detail", kwargs={"pk": video.id})
-    res = api_client.get(url, **headers)
-    assert res.status_code == 200
+    res = api_client.get(_detail_url(video.id), **_auth_headers(user))
     body = res.json()["video"]
-    assert "progress_id" not in body
-    assert "last_position" not in body
+    assert res.status_code == 200
+    assert "progress_id" not in body and "last_position" not in body
 
 
 def test_detail_not_found(api_client, auth_header, db):
     """Test for non-existing video detail."""
-    url = reverse("video_app:video-detail", kwargs={"pk": 999999})
-    res = api_client.get(url, **auth_header)
-    assert res.status_code == 404
+    assert api_client.get(_detail_url(999999), **
+                          auth_header).status_code == 404

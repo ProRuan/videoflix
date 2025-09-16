@@ -6,7 +6,7 @@ from video_app.models import Video
 from video_progress_app.models import VideoProgress
 
 
-def make_user(email="u@mail.com", active=True):
+def make_user(email: str = "u@mail.com", active: bool = True):
     """Make a test user."""
     User = get_user_model()
     u = User.objects.create_user(email=email, password="Pwd12345!")
@@ -16,13 +16,16 @@ def make_user(email="u@mail.com", active=True):
     return u
 
 
-def make_video(title="Wolf", genre="Nature"):
+def make_video(title: str = "Wolf", genre: str = "Nature", **kw) -> Video:
     """Make a test video."""
-    return Video.objects.create(title=title, genre=genre)
+    return Video.objects.create(title=title, genre=genre, **kw)
 
 
-def make_progress(user, video, last=12.5):
-    """Make a test progress."""
+def make_progress(user, video, last: float = 12.5, rel: float | None = None):
+    """Make a test video progress."""
     return VideoProgress.objects.create(
-        user=user, video=video, last_position=last
+        user=user,
+        video=video,
+        last_position=last,
+        relative_position=rel if rel is not None else 0.0,
     )
