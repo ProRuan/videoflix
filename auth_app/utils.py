@@ -69,36 +69,33 @@ def validate_email_unique(email: str) -> None:
         raise serializers.ValidationError("Email already exists.")
 
 
-def is_strong_password(password: str) -> tuple[bool, str | None]:
-    """Check password policy and return (ok, message)."""
-    if FORBIDDEN_PW_RE.search(password or ""):
-        return False, "Not allowed special character."
-    if len(password or "") < PW_MIN_LENGTH:
-        return False, "Use at least 8 characters."
-    if not UPPER_RE.search(password or ""):
-        return False, "Use at least one uppercase character."
-    if not LOWER_RE.search(password or ""):
-        return False, "Use at least one lowercase character."
-    if not DIGIT_RE.search(password or ""):
-        return False, "Use at least one digit."
-    if not SPECIAL_RE.search(password or ""):
-        return False, "Use at least one special character."
-    return True, None
+def get_password_errors(password: str = "") -> list[str]:
+    """Get a list of password errors or an empty list."""
+    errors: list[str] = []
+    if len(password) < PW_MIN_LENGTH:
+        errors.append("Use at least 8 characters.")
+    if not UPPER_RE.search(password):
+        errors.append("Use at least one uppercase character.")
+    if not LOWER_RE.search(password):
+        errors.append("Use at least one lowercase character.")
+    if not DIGIT_RE.search(password):
+        errors.append("Use at least one digit.")
+    if not SPECIAL_RE.search(password):
+        errors.append("Use at least one special character.")
+    return errors
 
 
-def validate_passwords(password: str, confirm: str | None = None) -> None:
+def validate_passwords(password: str = "", confirm: str | None = None) -> None:
     """Validate password and optional confirmation."""
-    if password == "":
+    if FORBIDDEN_PW_RE.search(password):
         raise serializers.ValidationError(
-            {"password": ["This field may not be blank."]}
-        )
-    ok, msg = is_strong_password(password)
-    if not ok:
-        raise serializers.ValidationError({"password": [msg]})
+            {"password": "Not allowed special character."})
+    messages = get_password_errors(password)
+    if messages:
+        raise serializers.ValidationError({"password": messages[0]})
     if confirm is not None and password != confirm:
         raise serializers.ValidationError(
-            {"password": ["Passwords must match."]}
-        )
+            {"password": "Passwords must match."})
 
 
 def create_knox_token(user, hours: int) -> str:
