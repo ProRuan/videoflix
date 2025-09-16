@@ -5,7 +5,7 @@ import re
 from rest_framework import serializers
 
 
-TOKEN_RE = re.compile(r"^[A-Za-z0-9:_\-]{10,}$")
+TOKEN_RE = re.compile(r"^[A-Za-z0-9:_\-]{64,}$")
 
 
 class ActivationTokenCheckSerializer(serializers.Serializer):

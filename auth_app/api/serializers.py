@@ -14,7 +14,7 @@ from auth_app.utils import (
 
 User = get_user_model()
 
-TOKEN_RE = re.compile(r"^[A-Za-z0-9:_\-]{10,}$")
+TOKEN_RE = re.compile(r"^[A-Za-z0-9:_\-]{64,}$")
 
 
 class RegistrationSerializer(serializers.Serializer):
@@ -113,19 +113,4 @@ class DeregistrationSerializer(serializers.Serializer):
     def validate_email(self, value):
         """Validate email."""
         validate_email_or_raise(value)
-        return value
-
-
-class AccountDeletionSerializer(serializers.Serializer):
-    """
-    Class representing an account deletion serializer.
-
-    Validates token for account deletion.
-    """
-    token = serializers.CharField()
-
-    def validate_token(self, value):
-        """Validate account deletion token."""
-        if not TOKEN_RE.match(value or ""):
-            raise serializers.ValidationError("Invalid token.")
         return value
