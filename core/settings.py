@@ -197,7 +197,7 @@ REST_FRAMEWORK = {
     ]
 }
 
-# check / move to / call from dotEnv
+# Update email backend for production
 EMAIL_BACKEND = os.getenv(
     "EMAIL_BACKEND",
     "django.core.mail.backends.console.EmailBackend"

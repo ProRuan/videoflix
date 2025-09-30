@@ -1,13 +1,14 @@
-# Third-party suppliers
 import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 from knox.models import AuthToken
 from rest_framework.test import APIClient
 
-# Local imports
 from video_app.tests.utils.factories import make_video
-from video_progress_app.tests.utils.factories import make_user, make_progress
+from video_progress_app.tests.utils.factories import (
+    make_progress,
+    make_user
+)
 
 
 @pytest.fixture
@@ -39,7 +40,7 @@ def test_detail_success(api_client, auth_header, db):
     """Test for successful video detail receipt."""
     v = make_video(title="Wolf", genre="Nature")
     res = api_client.get(_detail_url(v.id), **auth_header)
-    body = res.json()["video"]
+    body = res.json()
     assert res.status_code == 200
     assert body["id"] == v.id and body["title"] == "Wolf"
     assert "duration" in body and "quality_levels" in body
@@ -56,7 +57,7 @@ def test_detail_with_progress_fields(api_client, db):
     video = make_video(title="Bear", genre="Nature")
     prog = make_progress(user, video, last=12.5)
     res = api_client.get(_detail_url(video.id), **_auth_headers(user))
-    body = res.json()["video"]
+    body = res.json()
     assert res.status_code == 200
     assert body["progress_id"] == prog.id and body["last_position"] == 12.5
 
@@ -68,7 +69,7 @@ def test_detail_with_last_position(api_client, db):
     make_progress(user, video, last=12.5)
     res = api_client.get(_detail_url(video.id), **_auth_headers(user))
     assert res.status_code == 200
-    assert res.json()["video"]["last_position"] == 12.5
+    assert res.json()["last_position"] == 12.5
 
 
 def test_detail_no_progress(api_client, db):
@@ -76,12 +77,12 @@ def test_detail_no_progress(api_client, db):
     user = make_user()
     video = make_video(title="Wolf", genre="Nature")
     res = api_client.get(_detail_url(video.id), **_auth_headers(user))
-    body = res.json()["video"]
+    body = res.json()
     assert res.status_code == 200
     assert "progress_id" not in body and "last_position" not in body
 
 
 def test_detail_not_found(api_client, auth_header, db):
     """Test for non-existing video detail."""
-    assert api_client.get(_detail_url(999999), **
-                          auth_header).status_code == 404
+    res = api_client.get(_detail_url(999999), **auth_header)
+    assert res.status_code == 404

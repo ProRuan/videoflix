@@ -48,4 +48,4 @@ class VideoDetailView(APIView):
         if not video:
             return Response({"detail": "Not found."}, status=404)
         ser = VideoDetailSerializer(video, context={"request": request})
-        return Response({"video": ser.data})
+        return Response(ser.data)
