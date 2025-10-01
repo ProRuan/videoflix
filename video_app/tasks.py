@@ -47,15 +47,12 @@ def transcode_variant(src: Path, out_dir: Path,
     """Transcode one variant to HLS."""
     ensure_dirs([out_dir])
     _run([
-        "ffmpeg", "-y", "-i", str(src),
-        "-c:v", "libx264", "-profile:v", "high", "-level:v", "4.0",
-        "-preset", "medium", "-crf", "20",
+        "ffmpeg", "-y", "-i", str(src), "-c:v", "libx264", "-profile:v",
+        "high", "-level:v", "4.0", "-preset", "medium", "-crf", "20",
         "-s:v", size, "-b:v", vbr, "-maxrate", vbr, "-bufsize", "2M",
-        "-sc_threshold", "0",
-        "-force_key_frames", "expr:gte(t,n_forced*2)",
-        "-c:a", "aac", "-ac", "2", "-b:a", "128k",
-        "-hls_time", "4", "-hls_playlist_type", "vod",
-        "-hls_flags", "independent_segments",
+        "-sc_threshold", "0", "-force_key_frames", "expr:gte(t,n_forced*2)",
+        "-c:a", "aac", "-ac", "2", "-b:a", "128k", "-hls_time", "2",
+        "-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
         "-hls_segment_filename", str(out_dir / "seg_%03d.ts"),
         str(out_dir / "index.m3u8"),
     ])
