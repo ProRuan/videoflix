@@ -15,6 +15,9 @@ import os
 from dotenv import load_dotenv
 from pathlib import Path
 
+# Local imports
+from .utils import get_bool_env
+
 load_dotenv()
 
 
@@ -74,6 +77,7 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4200",
+    "https://videoflix.rudolf-sachslehner.eu",
 ]
 
 ROOT_URLCONF = 'core.urls'
@@ -197,20 +201,25 @@ REST_FRAMEWORK = {
     ]
 }
 
-# Update email backend for production
+
 EMAIL_BACKEND = os.getenv(
     "EMAIL_BACKEND",
     "django.core.mail.backends.console.EmailBackend"
 )
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@videoflix.local")
 
 EMAIL_HOST = os.getenv("EMAIL_HOST", "localhost")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT", 25))
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587))
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "false").lower() == "true"
-EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "false").lower() == "true"
+EMAIL_USE_TLS = get_bool_env("EMAIL_USE_TLS", True)
+EMAIL_USE_SSL = get_bool_env("EMAIL_USE_SSL", False)
 
-FRONTEND_URL = 'http://localhost:4200'
+DEFAULT_FROM_EMAIL = os.getenv(
+    "DEFAULT_FROM_EMAIL",
+    "noreply@videoflix.local"
+)
+SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+
+FRONTEND_URL = 'https://videoflix.rudolf-sachslehner.eu'
 
 VIDEO_NEW_DAYS = 90
