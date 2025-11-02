@@ -33,7 +33,7 @@ DELETION_TTL_H = 24
 
 def get_frontend_url() -> str:
     """Get base frontend URL with localhost fallback."""
-    base = getattr(settings, "FRONTEND_URL", "http://localhost:4200")
+    base = getattr(settings, "FRONTEND_HOST", "http://localhost:4200")
     return base.rstrip("/")
 
 

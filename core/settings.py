@@ -132,7 +132,7 @@ RQ_QUEUES = {
         'HOST': os.environ.get("REDIS_HOST", default="redis"),
         'PORT': os.environ.get("REDIS_PORT", default=6379),
         'DB': os.environ.get("REDIS_DB", default=0),
-        'DEFAULT_TIMEOUT': 900,
+        'DEFAULT_TIMEOUT': os.environ.get("RQ_TIMEOUT", default=900),
         'REDIS_CLIENT_KWARGS': {},
     },
 }
@@ -220,6 +220,8 @@ DEFAULT_FROM_EMAIL = os.getenv(
 )
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
-FRONTEND_URL = 'https://videoflix.rudolf-sachslehner.eu'
+BACKEND_HOST = os.getenv("BACKEND_HOST", 'http://localhost:8000')
+
+FRONTEND_HOST = os.getenv("FRONTEND_HOST", 'http://localhost:4200')
 
 VIDEO_NEW_DAYS = 90
